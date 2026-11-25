@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ===========================================================================
+  styles.xml — Temas nativos de arranque rápido en modo claro (#F9F6F0)
+  Evita destellos negros o pantallas blancas vacías al abrir Aura Music.
+============================================================================ -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">#F9F6F0</item>
+        <item name="android:navigationBarColor">#F0EBE1</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/aura_alabaster</item>
+        <item name="android:statusBarColor">#F9F6F0</item>
+        <item name="android:navigationBarColor">#F0EBE1</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <color name="aura_alabaster">#F9F6F0</color>
+</resources>

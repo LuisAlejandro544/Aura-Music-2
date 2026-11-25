@@ -1,0 +1,49 @@
+# ==============================================================================
+# Aura Music — Configuración principal de dependencias Flutter/Dart
+# ------------------------------------------------------------------------------
+# Todas las dependencias utilizan licencias permisivas (MIT / BSD / Apache-2.0)
+# sin obligaciones de código abierto viral (GPL/AGPL).
+# La lógica de reproducción de audio y extracción de metadatos corre de forma
+# nativa en Android mediante Media3 ExoPlayer y Kotlin Coroutines.
+# ==============================================================================
+
+name: aura_music
+description: Reproductor de música local fluido para Android 9+ con Flutter, Media3 ExoPlayer y arquitectura modular lista para Rust.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Gestión de estado reactiva y modular (Licencia MIT)
+  provider: ^6.1.2
+
+  # Base de datos SQLite local para indexar únicamente las pistas importadas
+  # por el usuario y lograr arranque instantáneo (Licencia BSD-2-Clause)
+  sqflite: ^2.3.3+1
+
+  # Rutas de caché locales para almacenar miniaturas de carátulas (Licencia BSD-3-Clause)
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # Persistencia ligera de preferencias y última pista reproducida (Licencia BSD-3-Clause)
+  shared_preferences: ^2.3.2
+
+  # Animaciones fluidas basadas en resortes y transiciones suaves (Licencia MIT)
+  flutter_animate: ^4.5.0
+
+  # Selector auxiliar multiplataforma; en Android la importación principal usa
+  # Storage Access Framework (SAF) nativo con permisos persistentes (Licencia MIT)
+  file_picker: ^8.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

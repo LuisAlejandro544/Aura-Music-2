@@ -1,0 +1,189 @@
+# ==============================================================================
+# build-debug-apk.yml — GitHub Action para compilar Aura Music en APK Debug
+# ------------------------------------------------------------------------------
+# Qué hace este workflow:
+#   1. Descarga todo el repositorio del proyecto.
+#   2. Detecta automáticamente si la app Flutter está en `aura_music/` o en la
+#      raíz del repositorio.
+#   3. Configura y cachea Java 17, Android SDK/NDK, Flutter SDK, Pub y Gradle.
+#   4. Si detecta código Rust (`Cargo.toml`) en el proyecto, instala y cachea
+#      automáticamente el toolchain de Rust (32 bits armv7 + 64 bits arm64),
+#      cargo-ndk y las dependencias de Cargo (`cargo fetch`).
+#   5. Descarga las dependencias de Flutter (`flutter pub get`) y compila
+#      exclusivamente el APK en modo Debug (`app-debug.apk`) para 32 y 64 bits.
+#   6. Sube el `app-debug.apk` como Artifact para descargarlo directo al teléfono.
+# ==============================================================================
+
+name: Compilar APK Debug (Aura Music)
+
+on:
+  # Permite ejecutar la compilación manualmente desde la app móvil de GitHub
+  workflow_dispatch:
+  # También compila automáticamente al subir cambios a main/master
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "aura_music/**"
+      - "lib/**"
+      - "android/**"
+      - "rust/**"
+      - "pubspec.yaml"
+      - ".github/workflows/build-debug-apk.yml"
+
+concurrency:
+  group: debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_debug_apk:
+    name: Compilar APK Debug (32 y 64 bits)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descargar todo el código del proyecto
+      - name: Descargar repositorio completo
+        uses: actions/checkout@v4
+
+      # 2. Detectar dónde vive el proyecto Flutter (subcarpeta aura_music o raíz)
+      - name: Detectar ruta del proyecto Flutter y Rust
+        id: detect
+        shell: bash
+        run: |
+          if [ -f "aura_music/pubspec.yaml" ]; then
+            echo "app_dir=aura_music" >> "$GITHUB_OUTPUT"
+            APP_DIR="aura_music"
+          elif [ -f "pubspec.yaml" ]; then
+            echo "app_dir=." >> "$GITHUB_OUTPUT"
+            APP_DIR="."
+          else
+            echo "::error::No se encontró pubspec.yaml ni en aura_music/ ni en la raíz."
+            exit 1
+          fi
+
+          # Verificar si ya existen archivos Cargo.toml de Rust en el proyecto
+          CARGO_PATH=$(find "$APP_DIR" -maxdepth 3 -name "Cargo.toml" | head -n 1 || true)
+          if [ -n "$CARGO_PATH" ]; then
+            echo "has_rust=true" >> "$GITHUB_OUTPUT"
+            echo "rust_manifest=$CARGO_PATH" >> "$GITHUB_OUTPUT"
+            echo "rust_dir=$(dirname "$CARGO_PATH")" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 3. Configurar Java 17 requerido por Android Gradle Plugin 8+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      # 4. Configurar Android SDK y cachear el NDK 26.3 (32/64 bits)
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Caché de Android NDK
+        id: cache_ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+          key: android-ndk-26.3.11579264-${{ runner.os }}
+
+      - name: Instalar Android NDK y plataformas si no están en caché
+        if: steps.cache_ndk.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;26.3.11579264"
+
+      # 5. Configurar Flutter SDK con caché integrada
+      - name: Configurar Flutter SDK (con caché)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
+
+      # 6. Caché explícita de paquetes Dart/Pub
+      - name: Caché de dependencias Pub (Dart/Flutter)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ steps.detect.outputs.app_dir }}/.dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.yaml', '**/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      # 7. Configurar Gradle con caché de artefactos y dependencias Maven/ExoPlayer
+      - name: Configurar Gradle y su caché
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Caché de Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # 8. Rust condicional: solo se instala y descarga si el proyecto contiene Cargo.toml
+      - name: Instalar Rust Toolchain (Android 32 y 64 bits) si es necesario
+        if: steps.detect.outputs.has_rust == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Caché de Cargo y dependencias Rust
+        if: steps.detect.outputs.has_rust == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ${{ steps.detect.outputs.rust_dir }}/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Instalar cargo-ndk y descargar crates de Rust
+        if: steps.detect.outputs.has_rust == 'true'
+        shell: bash
+        run: |
+          if ! command -v cargo-ndk >/dev/null 2>&1; then
+            cargo install cargo-ndk --locked
+          fi
+          cargo fetch --manifest-path "${{ steps.detect.outputs.rust_manifest }}"
+
+      # 9. Descargar dependencias Flutter y generar Gradle Wrapper si falta
+      - name: Descargar dependencias Flutter y preparar Gradle Wrapper
+        working-directory: ${{ steps.detect.outputs.app_dir }}
+        shell: bash
+        run: |
+          flutter pub get
+          if [ ! -f "android/gradlew" ]; then
+            (cd android && gradle wrapper --gradle-version 8.7)
+          fi
+          chmod +x android/gradlew
+
+      # 10. Compilar estrictamente en modo APK Debug (32 bits + 64 bits)
+      - name: Compilar APK Debug
+        working-directory: ${{ steps.detect.outputs.app_dir }}
+        shell: bash
+        run: |
+          flutter build apk --debug --target-platform android-arm,android-arm64
+
+      # 11. Subir el APK Debug compilado para descargarlo desde GitHub
+      - name: Publicar Artifact app-debug.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-music-debug-apk
+          path: ${{ steps.detect.outputs.app_dir }}/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
