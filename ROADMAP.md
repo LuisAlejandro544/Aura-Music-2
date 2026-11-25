@@ -30,7 +30,8 @@ Este documento describe las etapas de evolución de **Aura Music**, desde la bas
 ## Fase 2 — Estabilidad nativa, cola fluida y distribución Release (Próxima)
 
 - [ ] **Edición de cola sin microcortes**: Reemplazar el uso de `setQueueAndPlay` en `addToQueueEnd` / `playNextInQueue` por inserción incremental en `MediaController` (`addMediaItem(index, item)`).
-- [ ] **Contador atómico en importación SAF**: Sustituir `var processed = 0` por `AtomicInteger` en `AuraSafImporter.kt` para garantizar progreso exacto bajo concurrencia.
+- [x] **Contador atómico y concurrencia segura en importación SAF**: Sustituido `var processed = 0` por `AtomicInteger` en `AuraSafImporter.kt`, liberación previa del `Semaphore(4)` antes de notificar a `Main`, protección contra ciclos de carpetas y escritura atómica de caché de carátulas en `AuraTrackMetadata.kt`.
+- [x] **Arranque diferido real de Python en `DownloadUrlScreen`**: `getEngineStatus()` en `AuraYtDownloader.kt` consulta primero Rust/QuickJS-ng sin inicializar Chaquopy hasta que el usuario inicie una descarga.
 - [ ] **Detección y limpieza de URIs revocadas o archivos movidos**: Verificar permisos SAF persistentes al reproducir y ofrecer re-vincular o limpiar referencias huérfanas.
 - [ ] **Actualización opcional de cookies/PO Token y extractor sin WebView**: Evaluar exportación/importación opcional de cookies locales por el usuario si YouTube exige verificación de sesión en determinadas redes.
 - [ ] **Suite de tests automatizados en Flutter/Dart**: Pruebas unitarias y de widgets para `LibraryProvider`, `PlayerProvider`, `LibraryDatabase` y pantallas principales.

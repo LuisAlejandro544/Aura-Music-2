@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 
 class AuraSafImporter(
     private val activity: Activity,
@@ -37,6 +38,7 @@ class AuraSafImporter(
     companion object {
         const val REQUEST_PICK_AUDIO_FILES = 4101
         const val REQUEST_PICK_AUDIO_FOLDER = 4102
+        private const val MAX_FOLDER_DEPTH = 32
 
         private val SUPPORTED_EXTENSIONS = setOf(
             "mp3", "flac", "m4a", "aac", "wav", "ogg", "opus", "alac", "wma"
@@ -46,6 +48,7 @@ class AuraSafImporter(
     private var pendingCallback: ((Result<List<AuraTrackMetadata>>) -> Unit)? = null
 
     fun launchPickAudioFiles(callback: (Result<List<AuraTrackMetadata>>) -> Unit) {
+        pendingCallback?.invoke(Result.success(emptyList()))
         pendingCallback = callback
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -54,16 +57,29 @@ class AuraSafImporter(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
-        activity.startActivityForResult(intent, REQUEST_PICK_AUDIO_FILES)
+        try {
+            activity.startActivityForResult(intent, REQUEST_PICK_AUDIO_FILES)
+        } catch (err: Exception) {
+            val active = pendingCallback
+            pendingCallback = null
+            active?.invoke(Result.failure(err))
+        }
     }
 
     fun launchPickAudioFolder(callback: (Result<List<AuraTrackMetadata>>) -> Unit) {
+        pendingCallback?.invoke(Result.success(emptyList()))
         pendingCallback = callback
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
-        activity.startActivityForResult(intent, REQUEST_PICK_AUDIO_FOLDER)
+        try {
+            activity.startActivityForResult(intent, REQUEST_PICK_AUDIO_FOLDER)
+        } catch (err: Exception) {
+            val active = pendingCallback
+            pendingCallback = null
+            active?.invoke(Result.failure(err))
+        }
     }
 
     fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
@@ -88,8 +104,9 @@ class AuraSafImporter(
                     }
                 } ?: data.data?.let { uris.add(it) }
 
+                val distinctUris = uris.distinctBy { it.toString() }
                 scope.launch {
-                    val result = runCatching { processSelectedFiles(uris) }
+                    val result = runCatching { processSelectedFiles(distinctUris) }
                     withContext(Dispatchers.Main) { callback(result) }
                 }
             }
@@ -112,22 +129,27 @@ class AuraSafImporter(
     private suspend fun processSelectedFiles(uris: List<Uri>): List<AuraTrackMetadata> =
         withContext(Dispatchers.IO) {
             val total = uris.size
-            var processed = 0
+            if (total == 0) return@withContext emptyList()
+
+            val processed = AtomicInteger(0)
             val gate = Semaphore(4)
+            withContext(Dispatchers.Main) { onProgress(0, total) }
 
             val jobs = uris.map { uri ->
                 async {
-                    gate.withPermit {
+                    val meta = gate.withPermit {
                         takePersistablePermissionSafe(uri)
-                        val meta = AuraMetadataExtractor.extract(
+                        AuraMetadataExtractor.extract(
                             context = activity.applicationContext,
                             uri = uri,
                             folderName = "Pistas Importadas"
                         )
-                        processed += 1
-                        withContext(Dispatchers.Main) { onProgress(processed, total) }
-                        meta
                     }
+                    // Incrementa y notifica en el hilo principal para mantener orden monótono 1..total
+                    withContext(Dispatchers.Main) {
+                        onProgress(processed.incrementAndGet(), total)
+                    }
+                    meta
                 }
             }
             jobs.awaitAll().filterNotNull()
@@ -142,25 +164,30 @@ class AuraSafImporter(
             val rootFolderName = rootDoc.name ?: "Carpeta Local"
 
             val audioDocs = mutableListOf<Pair<DocumentFile, String>>()
-            collectAudioDocuments(rootDoc, rootFolderName, audioDocs)
+            val visitedUris = HashSet<String>()
+            collectAudioDocuments(rootDoc, rootFolderName, audioDocs, visitedUris, depth = 0)
 
             val total = audioDocs.size
-            var processed = 0
+            if (total == 0) return@withContext emptyList()
+
+            val processed = AtomicInteger(0)
             val gate = Semaphore(4)
+            withContext(Dispatchers.Main) { onProgress(0, total) }
 
             val jobs = audioDocs.map { (doc, folderLabel) ->
                 async {
-                    gate.withPermit {
-                        val meta = AuraMetadataExtractor.extract(
+                    val meta = gate.withPermit {
+                        AuraMetadataExtractor.extract(
                             context = activity.applicationContext,
                             uri = doc.uri,
                             folderName = folderLabel,
                             fallbackDisplayName = doc.name
                         )
-                        processed += 1
-                        withContext(Dispatchers.Main) { onProgress(processed, total) }
-                        meta
                     }
+                    withContext(Dispatchers.Main) {
+                        onProgress(processed.incrementAndGet(), total)
+                    }
+                    meta
                 }
             }
             jobs.awaitAll().filterNotNull()
@@ -169,8 +196,14 @@ class AuraSafImporter(
     private fun collectAudioDocuments(
         dir: DocumentFile,
         folderName: String,
-        output: MutableList<Pair<DocumentFile, String>>
+        output: MutableList<Pair<DocumentFile, String>>,
+        visitedUris: MutableSet<String>,
+        depth: Int
     ) {
+        if (depth > MAX_FOLDER_DEPTH) return
+        val dirKey = dir.uri.toString()
+        if (!visitedUris.add(dirKey)) return
+
         val children = try {
             dir.listFiles()
         } catch (_: Exception) {
@@ -178,9 +211,17 @@ class AuraSafImporter(
         }
         for (child in children) {
             if (child.isDirectory) {
-                collectAudioDocuments(child, child.name ?: folderName, output)
+                collectAudioDocuments(
+                    dir = child,
+                    folderName = child.name ?: folderName,
+                    output = output,
+                    visitedUris = visitedUris,
+                    depth = depth + 1
+                )
             } else if (child.isFile && isSupportedAudio(child)) {
-                output.add(child to folderName)
+                if (visitedUris.add(child.uri.toString())) {
+                    output.add(child to folderName)
+                }
             }
         }
     }

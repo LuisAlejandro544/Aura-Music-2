@@ -107,19 +107,33 @@ object AuraMetadataExtractor {
                     ?.toIntOrNull()?.let { sampleRateHz = it }
             }
 
-            // Cachear carátula incrustada solo si aún no existe en disco
+            // Cachear carátula incrustada de forma atómica solo si aún no existe en disco
             val embeddedBytes = retriever.embeddedPicture
             if (embeddedBytes != null && embeddedBytes.isNotEmpty()) {
                 val artDir = File(context.cacheDir, "artworks").apply {
                     if (!exists()) mkdirs()
                 }
                 val artFile = File(artDir, "$trackId.jpg")
-                if (!artFile.exists()) {
-                    FileOutputStream(artFile).use { fos ->
-                        fos.write(embeddedBytes)
+                if (!artFile.exists() || artFile.length() == 0L) {
+                    val tempFile = File(artDir, "$trackId.tmp.${Thread.currentThread().id}")
+                    try {
+                        FileOutputStream(tempFile).use { fos ->
+                            fos.write(embeddedBytes)
+                        }
+                        if (!artFile.exists() || artFile.length() == 0L) {
+                            if (!tempFile.renameTo(artFile)) {
+                                tempFile.copyTo(artFile, overwrite = true)
+                            }
+                        }
+                    } finally {
+                        if (tempFile.exists()) {
+                            tempFile.delete()
+                        }
                     }
                 }
-                artworkPath = artFile.absolutePath
+                if (artFile.exists() && artFile.length() > 0L) {
+                    artworkPath = artFile.absolutePath
+                }
             }
         } catch (_: Exception) {
             // Si algún archivo tiene metadatos corruptos, conservamos el nombre

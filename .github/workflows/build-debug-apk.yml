@@ -216,9 +216,36 @@ jobs:
         working-directory: ${{ steps.detect.outputs.app_dir }}
         shell: bash
         run: |
+          rm -rf build/app/intermediates/merged_jni_libs build/app/intermediates/stripped_native_libs build/app/intermediates/assets
           ORG_GRADLE_PROJECT_auraAbi=armeabi-v7a flutter build apk --debug --target-platform android-arm
           cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
           ls -lh build/app/outputs/flutter-apk/
+
+      - name: Verificar que cada APK Debug contenga únicamente su ABI
+        working-directory: ${{ steps.detect.outputs.app_dir }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import sys, zipfile
+
+          checks = [
+              ("build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk", "arm64-v8a"),
+              ("build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk", "armeabi-v7a"),
+          ]
+
+          for apk_path, expected_abi in checks:
+              with zipfile.ZipFile(apk_path, "r") as zf:
+                  lib_entries = [n for n in zf.namelist() if n.startswith("lib/")]
+              abis = sorted({n.split("/")[1] for n in lib_entries if len(n.split("/")) >= 3})
+              print(f"{apk_path} -> ABIs en lib/: {abis} ({len(lib_entries)} archivos)")
+              if abis != [expected_abi]:
+                  print(f"ERROR: Se esperaba únicamente [{expected_abi}], pero se encontró {abis}", file=sys.stderr)
+                  sys.exit(1)
+              for required in (f"lib/{expected_abi}/libaura_yt_rust.so", f"lib/{expected_abi}/libaura_qjs.so"):
+                  if required not in lib_entries:
+                      print(f"ERROR: Falta {required} en {apk_path}", file=sys.stderr)
+                      sys.exit(1)
+          PY
 
       # 12. Subir un Artifact individual para 64 bits (arm64-v8a)
       - name: Publicar Artifact 64 bits (arm64-v8a)

@@ -92,7 +92,12 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
       format: _selectedFormat,
     );
 
-    if (!mounted || track == null) return;
+    if (!mounted) return;
+    if (track == null) {
+      // Si la descarga falló tras arrancar Python, actualiza el diagnóstico
+      _loadEngineStatus();
+      return;
+    }
 
     await player.playQueue([track], startIndex: 0);
     if (!mounted) return;
@@ -545,9 +550,13 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                         )
                       else if (_engineStatus != null)
                         Text(
-                          'yt-dlp ${_engineStatus!.ytDlpVersion} · ejs ${_engineStatus!.ejsVersion} · Python ${_engineStatus!.pythonVersion}\n'
-                          'JS Runtime: Rust QuickJS-ng (${_engineStatus!.quickjsReady ? "listo" : "pendiente"})\n'
-                          'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch})',
+                          _engineStatus!.pythonStarted
+                              ? 'yt-dlp ${_engineStatus!.ytDlpVersion} · ejs ${_engineStatus!.ejsVersion} · Python ${_engineStatus!.pythonVersion}\n'
+                                  'JS Runtime: Rust QuickJS-ng (${_engineStatus!.quickjsReady ? "listo" : "pendiente"})\n'
+                                  'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch})'
+                              : 'Python 3.11 + yt-dlp + ejs (inicio diferido al descargar)\n'
+                                  'JS Runtime: Rust QuickJS-ng (${_engineStatus!.quickjsReady ? "listo" : "pendiente"})\n'
+                                  'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch})',
                           style: const TextStyle(
                             fontSize: 12,
                             height: 1.45,

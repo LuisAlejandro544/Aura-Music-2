@@ -49,18 +49,38 @@ object AuraYtDownloader {
     private const val YT_CACHE_DIR = "yt_dlp_cache"
     private const val YT_UPDATES_DIR = "yt_dlp_updates"
 
+    private val pythonInitLock = Any()
+
     private fun ensurePythonStarted(context: Context): Python {
         val appContext = context.applicationContext
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(appContext))
+        synchronized(pythonInitLock) {
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(appContext))
+            }
+            return Python.getInstance()
         }
-        return Python.getInstance()
     }
 
     suspend fun getEngineStatus(context: Context): Map<String, Any?> =
         withContext(Dispatchers.IO) {
             val appContext = context.applicationContext
             val rustInfo = AuraRustYtBridge.getEngineInfoJson(appContext)
+            val pythonStarted = Python.isStarted()
+
+            if (!pythonStarted) {
+                return@withContext mapOf(
+                    "pythonStarted" to false,
+                    "pythonVersion" to "",
+                    "ytDlpVersion" to "",
+                    "ejsVersion" to "",
+                    "quickjsBinaryPath" to rustInfo.optString("quickjsBinaryPath", ""),
+                    "quickjsReady" to rustInfo.optBoolean("quickjsBinaryExists", false),
+                    "rustCrate" to rustInfo.optString("rustCrate", ""),
+                    "audioProcessor" to rustInfo.optString("audioProcessor", ""),
+                    "arch" to rustInfo.optString("arch", "")
+                )
+            }
+
             val py = ensurePythonStarted(appContext)
             val module = py.getModule("aura_yt_engine")
             val qjsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
@@ -68,6 +88,7 @@ object AuraYtDownloader {
             val pyJson = JSONObject(module.callAttr("get_engine_info", qjsPath, updateDir).toString())
 
             mapOf(
+                "pythonStarted" to true,
                 "pythonVersion" to pyJson.optString("pythonVersion", ""),
                 "ytDlpVersion" to pyJson.optString("ytDlpVersion", ""),
                 "ejsVersion" to pyJson.optString("ejsVersion", ""),

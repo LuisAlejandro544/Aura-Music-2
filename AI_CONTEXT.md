@@ -30,9 +30,9 @@ Este archivo resume las decisiones arquitectónicas, límites del entorno y fluj
    - `main.dart` evalúa `Permission.notification.status` y `SharedPreferences` antes de montar `AppShell`.
    - En Android 13+, `POST_NOTIFICATIONS` se solicita antes de entrar a la app; si el usuario lo deniega permanentemente, ofrece `openAppSettings()` y una salida controlada.
 5. **Concurrencia fuera del hilo principal**:
-   - Extracción SAF (`AuraSafImporter.kt` + `AuraTrackMetadata.kt`): `Dispatchers.IO` con `Semaphore(4)`.
+   - Extracción SAF (`AuraSafImporter.kt` + `AuraTrackMetadata.kt`): `Dispatchers.IO` con `Semaphore(4)`, contador `AtomicInteger` en orden monótono y caché atómica de carátulas.
    - Conversión WebP (`AuraArtworkProcessor.kt`): `Dispatchers.IO` con `ImageDecoder` (API 28+) y `Bitmap.recycle()`.
-   - Descarga y verificación (`AuraYtDownloader.kt`): `Dispatchers.IO` (Rust URL -> Chaquopy `aura_yt_engine.py` -> WebP -> Rust Lofty).
+   - Descarga y verificación (`AuraYtDownloader.kt`): `Dispatchers.IO` (Rust URL -> Chaquopy `aura_yt_engine.py` con arranque diferido al descargar -> WebP -> Rust Lofty). `getEngineStatus()` no inicializa Python si aún no fue usado.
 6. **Persistencia y protección de ediciones del usuario (`LibraryDatabase` v2)**:
    - SQLite guarda `originalArtworkPath` y `hasCustomMetadata`.
    - Las pistas descargadas desde URL se guardan en `filesDir/downloads/`, sus carátulas WebP en `filesDir/custom_artworks/`, y las ediciones personalizadas no se sobrescriben al re-importar.

@@ -278,6 +278,7 @@ class DownloadProgressEvent {
 @immutable
 class YtEngineStatus {
   const YtEngineStatus({
+    required this.pythonStarted,
     required this.pythonVersion,
     required this.ytDlpVersion,
     required this.ejsVersion,
@@ -287,6 +288,7 @@ class YtEngineStatus {
     required this.arch,
   });
 
+  final bool pythonStarted;
   final String pythonVersion;
   final String ytDlpVersion;
   final String ejsVersion;
@@ -296,8 +298,10 @@ class YtEngineStatus {
   final String arch;
 
   factory YtEngineStatus.fromMap(Map<String, dynamic> map) {
+    final pyVer = (map['pythonVersion'] ?? '').toString();
     return YtEngineStatus(
-      pythonVersion: (map['pythonVersion'] ?? '').toString(),
+      pythonStarted: map['pythonStarted'] == true || pyVer.isNotEmpty,
+      pythonVersion: pyVer,
       ytDlpVersion: (map['ytDlpVersion'] ?? '').toString(),
       ejsVersion: (map['ejsVersion'] ?? '').toString(),
       quickjsReady: map['quickjsReady'] == true,

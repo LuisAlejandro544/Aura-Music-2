@@ -27,15 +27,28 @@ val targetPlatformProp = (
         ?: project.findProperty("aura-abi")
         ?: project.findProperty("target-platforms")
         ?: project.findProperty("target-platform")
-    )?.toString() ?: ""
+    )?.toString()?.trim() ?: ""
 
 val requestedAbis = when {
     targetPlatformProp == "android-arm" || targetPlatformProp == "armeabi-v7a" ->
         listOf("armeabi-v7a")
     targetPlatformProp == "android-arm64" || targetPlatformProp == "arm64-v8a" ->
         listOf("arm64-v8a")
+    targetPlatformProp.contains(",") -> targetPlatformProp.split(",")
+        .mapNotNull { token ->
+            when (token.trim()) {
+                "android-arm", "armeabi-v7a" -> "armeabi-v7a"
+                "android-arm64", "arm64-v8a" -> "arm64-v8a"
+                else -> null
+            }
+        }
+        .distinct()
+        .ifEmpty { listOf("armeabi-v7a", "arm64-v8a") }
     else -> listOf("armeabi-v7a", "arm64-v8a")
 }
+
+val isSplitPerAbi =
+    project.findProperty("split-per-abi")?.toString()?.toBoolean() == true
 
 val configuredNdkVersion = "28.2.13676358"
 
@@ -59,11 +72,10 @@ android {
         // Soporte explícito para 32 bits y 64 bits; cuando se compila con
         // --split-per-abi, Flutter configura splits.abi y AGP no permite
         // combinarlo simultáneamente con defaultConfig.ndk.abiFilters.
-        val isSplitPerAbi =
-            project.findProperty("split-per-abi")?.toString()?.toBoolean() == true
         if (!isSplitPerAbi) {
             ndk {
-                abiFilters += requestedAbis
+                abiFilters.clear()
+                abiFilters.addAll(requestedAbis)
             }
         }
     }
@@ -80,6 +92,16 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // Excluye explícitamente cualquier ABI ajena a requestedAbis (p. ej. x86_64 o la otra ABI ARM)
+            // que Flutter Debug o dependencias nativas intenten empaquetar dentro del APK individual.
+            if (!isSplitPerAbi) {
+                val excludedAbis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+                    .filter { it !in requestedAbis }
+                excludedAbis.forEach { abi ->
+                    excludes += "lib/$abi/**"
+                    excludes += "**/$abi/**"
+                }
+            }
         }
     }
 
@@ -94,9 +116,37 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("debug")
+            if (!isSplitPerAbi) {
+                ndk {
+                    abiFilters.clear()
+                    abiFilters.addAll(requestedAbis)
+                }
+            }
         }
         debug {
             isMinifyEnabled = false
+            if (!isSplitPerAbi) {
+                ndk {
+                    abiFilters.clear()
+                    abiFilters.addAll(requestedAbis)
+                }
+            }
+        }
+    }
+}
+
+// Flutter Gradle Plugin inyecta todas las ABIs (incluida x86_64) en variantes Debug
+// durante afterEvaluate. finalizeDsl limpia esa lista antes de crear las variantes
+// para que Chaquopy, Flutter y AGP empaqueten exclusivamente requestedAbis.
+androidComponents {
+    finalizeDsl { extension ->
+        if (!isSplitPerAbi) {
+            extension.defaultConfig.ndk.abiFilters.clear()
+            extension.defaultConfig.ndk.abiFilters.addAll(requestedAbis)
+            extension.buildTypes.forEach { buildType ->
+                buildType.ndk.abiFilters.clear()
+                buildType.ndk.abiFilters.addAll(requestedAbis)
+            }
         }
     }
 }
@@ -172,6 +222,7 @@ fun registerAuraRustTask(variant: String) {
         group = "rust"
         description = "Compila libaura_yt_rust.so y libaura_qjs.so para $variant (${abisToBuild.joinToString()})"
         workingDir = rustCrateDir
+        inputs.property("requestedAbis", abisToBuild.joinToString(","))
 
         val ndkPath = if (androidSdkDir.isNotEmpty()) {
             "$androidSdkDir/ndk/$configuredNdkVersion"
