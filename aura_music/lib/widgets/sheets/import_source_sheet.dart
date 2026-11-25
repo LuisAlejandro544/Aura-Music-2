@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/aura_theme.dart';
+import '../../screens/import/download_url_screen.dart';
 import '../../state/library_provider.dart';
 
 Future<void> showImportSourceSheet(BuildContext context) {
@@ -157,6 +158,23 @@ class _ImportSourceSheet extends StatelessWidget {
                       );
                     }
                   }
+                },
+              ),
+              const SizedBox(height: 12),
+              _ImportOptionCard(
+                icon: Icons.cloud_download_rounded,
+                iconBg: AuraColors.sageSoft,
+                iconColor: AuraColors.sage,
+                title: 'Descargar desde URL (yt-dlp)',
+                subtitle: 'Extrae audio directo con yt-dlp-ejs y Rust QuickJS-ng',
+                onTap: () {
+                  final navigator = Navigator.of(context);
+                  navigator.pop();
+                  navigator.push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DownloadUrlScreen(),
+                    ),
+                  );
                 },
               ),
             ],

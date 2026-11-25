@@ -26,11 +26,16 @@ class LibraryProvider extends ChangeNotifier {
       _importTotal = event.total;
       notifyListeners();
     });
+    _downloadSub = _engine.downloadProgressEvents.listen((event) {
+      _downloadProgress = event;
+      notifyListeners();
+    });
   }
 
   final AudioEnginePort _engine;
   final LibraryDatabase _database;
   StreamSubscription<({int processed, int total})>? _progressSub;
+  StreamSubscription<DownloadProgressEvent>? _downloadSub;
 
   List<AudioTrack> _tracks = [];
   List<LocalPlaylistRecord> _playlists = [];
@@ -39,6 +44,10 @@ class LibraryProvider extends ChangeNotifier {
   bool _isImporting = false;
   int _importProcessed = 0;
   int _importTotal = 0;
+  bool _isDownloadingUrl = false;
+  DownloadProgressEvent? _downloadProgress;
+  String? _downloadError;
+  String? _downloadRawError;
   String? _lastError;
 
   List<AudioTrack> get tracks => _sortedTracks();
@@ -61,6 +70,10 @@ class LibraryProvider extends ChangeNotifier {
   bool get isImporting => _isImporting;
   int get importProcessed => _importProcessed;
   int get importTotal => _importTotal;
+  bool get isDownloadingUrl => _isDownloadingUrl;
+  DownloadProgressEvent? get downloadProgress => _downloadProgress;
+  String? get downloadError => _downloadError;
+  String? get downloadRawError => _downloadRawError;
   String? get lastError => _lastError;
 
   List<LocalCollection> get albums {
@@ -242,6 +255,58 @@ class LibraryProvider extends ChangeNotifier {
     }
   }
 
+  Future<YtEngineStatus> fetchYtEngineStatus() {
+    return _engine.getYtEngineStatus();
+  }
+
+  Future<AudioTrack?> downloadTrackFromUrl(
+    String url, {
+    YtDownloadFormat format = YtDownloadFormat.best,
+  }) async {
+    if (_isDownloadingUrl) return null;
+    _isDownloadingUrl = true;
+    _downloadError = null;
+    _downloadRawError = null;
+    _downloadProgress = const DownloadProgressEvent(
+      stage: 'resolving',
+      percent: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      message: 'Preparando motor yt-dlp + Rust...',
+    );
+    notifyListeners();
+
+    try {
+      final downloaded = await _engine.downloadFromUrl(
+        url: url,
+        format: format,
+      );
+      final prev = findById(downloaded.id);
+      final merged = prev == null
+          ? downloaded
+          : downloaded.copyWith(
+              isFavorite: prev.isFavorite,
+              lastPlayedAtMs: prev.lastPlayedAtMs,
+              playCount: prev.playCount,
+            );
+
+      await _database.upsertTracks([merged]);
+      _tracks = await _database.getAllTracks();
+      return findById(merged.id) ?? merged;
+    } on YtDownloadFailure catch (e) {
+      _downloadError = e.summary;
+      _downloadRawError = e.rawLog.isNotEmpty ? e.rawLog : e.summary;
+      return null;
+    } catch (e, stack) {
+      _downloadError = e.toString().replaceFirst('Exception: ', '');
+      _downloadRawError = '$e\n$stack';
+      return null;
+    } finally {
+      _isDownloadingUrl = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> toggleFavorite(String trackId) async {
     final index = _tracks.indexWhere((t) => t.id == trackId);
     if (index < 0) return;
@@ -357,6 +422,7 @@ class LibraryProvider extends ChangeNotifier {
   @override
   void dispose() {
     _progressSub?.cancel();
+    _downloadSub?.cancel();
     super.dispose();
   }
 }

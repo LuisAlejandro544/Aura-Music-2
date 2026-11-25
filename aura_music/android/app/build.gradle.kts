@@ -1,22 +1,38 @@
 // =============================================================================
 // app/build.gradle.kts — Configuración de compilación del APK de Aura Music
 // -----------------------------------------------------------------------------
-// - minSdk = 28 (Android 9 Pie): solicitado explícitamente por el proyecto.
-//   Permite usar Media3 ExoPlayer, NotificationChannel nativo y Storage Access
-//   Framework moderno sin parches heredados de Android 5-8.
-// - abiFilters: incluye arquitecturas de 32 bits (armeabi-v7a) y 64 bits
-//   (arm64-v8a) para compatibilidad total al distribuir el APK en Uptodown u
-//   otras tiendas de terceros.
-// - Sin dependencias Rust activas en esta versión inicial; la capa de puente
-//   está preparada en Dart para la integración final.
+// - minSdk = 28 (Android 9 Pie): Media3 ExoPlayer, ImageDecoder WebP lossless,
+//   Storage Access Framework y ejecución segura desde nativeLibraryDir.
+// - Chaquopy 17.2.0 (Licencia MIT): intérprete Python 3.12 minimalista con
+//   únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`.
+// - Rust (`aura_yt_engine`, MIT/Apache-2.0): compilado obligatoriamente con
+//   `cargo-ndk` para 32 bits (armeabi-v7a) y 64 bits (arm64-v8a), generando:
+//     * `libaura_yt_rust.so` (JNI: verificación de audio y tagging con Lofty)
+//     * `libaura_qjs.so` (binario QuickJS-ng en Rust para yt-dlp-ejs)
 // =============================================================================
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.chaquo.python")
+}
+
+val targetPlatformProp = (
+    project.findProperty("aura-abi")
+        ?: project.findProperty("target-platforms")
+        ?: project.findProperty("target-platform")
+    )?.toString() ?: ""
+
+val requestedAbis = when {
+    targetPlatformProp == "android-arm" || targetPlatformProp == "armeabi-v7a" ->
+        listOf("armeabi-v7a")
+    targetPlatformProp == "android-arm64" || targetPlatformProp == "arm64-v8a" ->
+        listOf("arm64-v8a")
+    else -> listOf("armeabi-v7a", "arm64-v8a")
 }
 
 android {
@@ -36,15 +52,26 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // Soporte explícito para 32 bits y 64 bits en APK universal; cuando se
-        // compila con --split-per-abi, Flutter configura splits.abi y AGP no
-        // permite combinarlo simultáneamente con defaultConfig.ndk.abiFilters.
+        // Soporte explícito para 32 bits y 64 bits; cuando se compila con
+        // --split-per-abi, Flutter configura splits.abi y AGP no permite
+        // combinarlo simultáneamente con defaultConfig.ndk.abiFilters.
         val isSplitPerAbi =
             project.findProperty("split-per-abi")?.toString()?.toBoolean() == true
         if (!isSplitPerAbi) {
             ndk {
-                abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+                abiFilters += requestedAbis
             }
+        }
+    }
+
+    sourceSets {
+        getByName("debug").jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs/debug"))
+        getByName("release").jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs/release"))
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
@@ -66,6 +93,28 @@ android {
     }
 }
 
+chaquopy {
+    defaultConfig {
+        version = "3.12"
+        System.getenv("CHAQUOPY_BUILD_PYTHON")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { buildPython(it) }
+        pip {
+            // Intérprete mínimo: solo yt-dlp + yt-dlp-ejs sin dependencias extra,
+            // más certifi para validación TLS fiable en Android 9+.
+            install("yt-dlp --no-deps")
+            install("yt-dlp-ejs --no-deps")
+            install("certifi")
+        }
+        // Necesario para importlib.resources en yt_dlp_ejs y certifi/cacert.pem
+        extractPackages("yt_dlp_ejs", "certifi")
+        pyc {
+            src = true
+            std = true
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -75,6 +124,99 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// =============================================================================
+// Compilación nativa de Rust (`aura_yt_engine`) con `cargo-ndk` para 32 y 64 bits
+// =============================================================================
+val rustCrateDir = file("../../rust/aura_yt_engine")
+
+val cargoExecutable = listOf(
+    File(System.getProperty("user.home"), ".cargo/bin/cargo"),
+    File("/usr/local/cargo/bin/cargo")
+).firstOrNull { it.exists() }?.absolutePath ?: "cargo"
+
+val androidSdkDir: String by lazy {
+    val localProps = Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    localProps.getProperty("sdk.dir")
+        ?: System.getenv("ANDROID_HOME")
+        ?: System.getenv("ANDROID_SDK_ROOT")
+        ?: ""
+}
+
+fun abiToRustTriple(abi: String): String = when (abi) {
+    "armeabi-v7a" -> "armv7-linux-androideabi"
+    "arm64-v8a" -> "aarch64-linux-android"
+    else -> error("ABI no soportada por Aura Music: $abi")
+}
+
+fun registerAuraRustTask(variant: String) {
+    val capitalized = variant.replaceFirstChar { it.uppercaseChar() }
+    val taskName = "compileAuraRust$capitalized"
+    val outputDir = layout.buildDirectory.dir("rustJniLibs/$variant").get().asFile
+    val abisToBuild = requestedAbis
+
+    tasks.register<Exec>(taskName) {
+        group = "rust"
+        description = "Compila libaura_yt_rust.so y libaura_qjs.so para $variant (${abisToBuild.joinToString()})"
+        workingDir = rustCrateDir
+
+        val ndkPath = if (androidSdkDir.isNotEmpty()) {
+            "$androidSdkDir/ndk/${android.ndkVersion}"
+        } else {
+            System.getenv("ANDROID_NDK_HOME") ?: ""
+        }
+
+        val cmdArgs = mutableListOf(
+            "ndk",
+            "--platform", "28",
+            "-o", outputDir.absolutePath
+        )
+        abisToBuild.forEach { abi ->
+            cmdArgs.add("-t")
+            cmdArgs.add(abi)
+        }
+        // Se compila siempre --release para que QuickJS-ng ejecute el solver AST
+        // de YouTube a máxima velocidad incluso en APKs Debug.
+        cmdArgs.addAll(listOf("build", "--release"))
+
+        executable = cargoExecutable
+        args = cmdArgs
+
+        if (ndkPath.isNotEmpty()) {
+            environment("ANDROID_NDK_HOME", ndkPath)
+        }
+        environment("RUSTFLAGS", "-C link-arg=-Wl,-z,max-page-size=16384")
+
+        doFirst {
+            outputDir.deleteRecursively()
+            outputDir.mkdirs()
+        }
+
+        doLast {
+            abisToBuild.forEach { abi ->
+                val triple = abiToRustTriple(abi)
+                val builtBin = File(rustCrateDir, "target/$triple/release/aura_qjs")
+                if (!builtBin.exists()) {
+                    throw GradleException("No se encontró el binario Rust QuickJS-ng en: ${builtBin.absolutePath}")
+                }
+                val abiOutDir = File(outputDir, abi).apply { mkdirs() }
+                val destQjs = File(abiOutDir, "libaura_qjs.so")
+                builtBin.copyTo(destQjs, overwrite = true)
+                destQjs.setExecutable(true, false)
+            }
+        }
+    }
+
+    tasks.matching { it.name == "merge${capitalized}JniLibFolders" }.configure {
+        dependsOn(taskName)
+    }
+}
+
+registerAuraRustTask("debug")
+registerAuraRustTask("release")
 
 dependencies {
     // Media3 ExoPlayer y MediaSession (Licencia Apache-2.0)

@@ -338,6 +338,60 @@ class AuraAudioBridge(
                 result.success(true)
             }
 
+            "getYtEngineStatus" -> {
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.getEngineStatus(activity.applicationContext)
+                    }.fold(
+                        onSuccess = { status -> result.success(status) },
+                        onFailure = { err -> result.error("YT_STATUS_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "downloadFromUrl" -> {
+                val url = call.argument<String>("url")
+                val formatPref = call.argument<String>("format") ?: "best"
+                if (url.isNullOrBlank()) {
+                    result.error("INVALID_ARG", "La URL no puede estar vacía", null)
+                    return
+                }
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.downloadTrackFromUrl(
+                            context = activity.applicationContext,
+                            rawUrl = url,
+                            formatPref = formatPref,
+                            onProgress = { stage, percent, downloadedBytes, totalBytes, message ->
+                                emitEvent(
+                                    mapOf(
+                                        "type" to "downloadProgress",
+                                        "stage" to stage,
+                                        "percent" to percent,
+                                        "downloadedBytes" to downloadedBytes,
+                                        "totalBytes" to totalBytes,
+                                        "message" to message
+                                    )
+                                )
+                            }
+                        )
+                    }.fold(
+                        onSuccess = { meta -> result.success(meta.toMap()) },
+                        onFailure = { err ->
+                            val rawDetail = when (err) {
+                                is YtDownloadDetailedException -> err.rawDetail
+                                else -> err.stackTraceToString()
+                            }
+                            result.error(
+                                "YT_DOWNLOAD_ERR",
+                                err.message ?: "Error al descargar desde URL",
+                                rawDetail
+                            )
+                        }
+                    )
+                }
+            }
+
             else -> result.notImplemented()
         }
     }

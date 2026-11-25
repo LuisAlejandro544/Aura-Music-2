@@ -18,6 +18,7 @@ abstract class AudioEnginePort {
 
   Stream<NativePlaybackEvent> get playbackEvents;
   Stream<({int processed, int total})> get importProgressEvents;
+  Stream<DownloadProgressEvent> get downloadProgressEvents;
   Stream<String> get errorEvents;
 
   Future<void> initialize();
@@ -25,6 +26,14 @@ abstract class AudioEnginePort {
   /// Importación manual vía Storage Access Framework (sin escanear el teléfono)
   Future<List<AudioTrack>> pickAudioFiles();
   Future<List<AudioTrack>> pickAudioFolder();
+
+  /// Descarga directa desde URL con yt-dlp + yt-dlp-ejs + Rust QuickJS-ng
+  Future<AudioTrack> downloadFromUrl({
+    required String url,
+    YtDownloadFormat format = YtDownloadFormat.best,
+  });
+
+  Future<YtEngineStatus> getYtEngineStatus();
 
   /// Control de cola y reproducción
   Future<void> setQueueAndPlay({

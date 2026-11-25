@@ -22,6 +22,8 @@ class ExoPlayerBridge implements AudioEnginePort {
       StreamController<NativePlaybackEvent>.broadcast();
   final StreamController<({int processed, int total})> _importController =
       StreamController<({int processed, int total})>.broadcast();
+  final StreamController<DownloadProgressEvent> _downloadProgressController =
+      StreamController<DownloadProgressEvent>.broadcast();
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
 
@@ -37,6 +39,10 @@ class ExoPlayerBridge implements AudioEnginePort {
   @override
   Stream<({int processed, int total})> get importProgressEvents =>
       _importController.stream;
+
+  @override
+  Stream<DownloadProgressEvent> get downloadProgressEvents =>
+      _downloadProgressController.stream;
 
   @override
   Stream<String> get errorEvents => _errorController.stream;
@@ -89,6 +95,16 @@ class ExoPlayerBridge implements AudioEnginePort {
           processed: (map['processed'] as num?)?.toInt() ?? 0,
           total: (map['total'] as num?)?.toInt() ?? 0,
         ));
+      case 'downloadProgress':
+        _downloadProgressController.add(
+          DownloadProgressEvent(
+            stage: (map['stage'] ?? 'resolving').toString(),
+            percent: (map['percent'] as num?)?.toDouble() ?? 0.0,
+            downloadedBytes: (map['downloadedBytes'] as num?)?.toInt() ?? 0,
+            totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
+            message: (map['message'] ?? '').toString(),
+          ),
+        );
       case 'error':
         _errorController.add(
           (map['message'] as String?) ?? 'Error desconocido en ExoPlayer',
@@ -124,6 +140,52 @@ class ExoPlayerBridge implements AudioEnginePort {
               'importedAtMs': now,
             }))
         .toList();
+  }
+
+  @override
+  Future<AudioTrack> downloadFromUrl({
+    required String url,
+    YtDownloadFormat format = YtDownloadFormat.best,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'downloadFromUrl',
+        {
+          'url': url,
+          'format': format.name,
+        },
+      );
+      if (raw == null || raw.isEmpty) {
+        throw const YtDownloadFailure(
+          summary: 'No se recibió respuesta del motor yt-dlp',
+          rawLog: 'MethodChannel downloadFromUrl devolvió null o mapa vacío.',
+        );
+      }
+      return AudioTrack.fromMap({
+        ...raw,
+        'importedAtMs': now,
+      });
+    } on PlatformException catch (e) {
+      final summary = (e.message ?? '').trim().isNotEmpty
+          ? e.message!.trim()
+          : 'Error al descargar desde URL (${e.code})';
+      final rawDetails = (e.details?.toString() ?? '').trim();
+      throw YtDownloadFailure(
+        summary: summary,
+        rawLog: rawDetails.isNotEmpty
+            ? rawDetails
+            : 'Code: ${e.code}\nMessage: $summary',
+      );
+    }
+  }
+
+  @override
+  Future<YtEngineStatus> getYtEngineStatus() async {
+    final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+      'getYtEngineStatus',
+    );
+    return YtEngineStatus.fromMap(raw ?? const <String, dynamic>{});
   }
 
   @override
@@ -245,6 +307,7 @@ class ExoPlayerBridge implements AudioEnginePort {
     _eventSubscription?.cancel();
     _playbackController.close();
     _importController.close();
+    _downloadProgressController.close();
     _errorController.close();
   }
 }

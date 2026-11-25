@@ -255,3 +255,69 @@ class LosslessWebpResult {
     return '${(byteSize / (1024 * 1024)).toStringAsFixed(2)} MB';
   }
 }
+
+enum YtDownloadFormat { best, m4a, opus }
+
+@immutable
+class DownloadProgressEvent {
+  const DownloadProgressEvent({
+    required this.stage,
+    required this.percent,
+    required this.downloadedBytes,
+    required this.totalBytes,
+    required this.message,
+  });
+
+  final String stage;
+  final double percent;
+  final int downloadedBytes;
+  final int totalBytes;
+  final String message;
+}
+
+@immutable
+class YtEngineStatus {
+  const YtEngineStatus({
+    required this.pythonVersion,
+    required this.ytDlpVersion,
+    required this.ejsVersion,
+    required this.quickjsReady,
+    required this.rustCrate,
+    required this.audioProcessor,
+    required this.arch,
+  });
+
+  final String pythonVersion;
+  final String ytDlpVersion;
+  final String ejsVersion;
+  final bool quickjsReady;
+  final String rustCrate;
+  final String audioProcessor;
+  final String arch;
+
+  factory YtEngineStatus.fromMap(Map<String, dynamic> map) {
+    return YtEngineStatus(
+      pythonVersion: (map['pythonVersion'] ?? '').toString(),
+      ytDlpVersion: (map['ytDlpVersion'] ?? '').toString(),
+      ejsVersion: (map['ejsVersion'] ?? '').toString(),
+      quickjsReady: map['quickjsReady'] == true,
+      rustCrate: (map['rustCrate'] ?? '').toString(),
+      audioProcessor: (map['audioProcessor'] ?? '').toString(),
+      arch: (map['arch'] ?? '').toString(),
+    );
+  }
+}
+
+@immutable
+class YtDownloadFailure implements Exception {
+  const YtDownloadFailure({
+    required this.summary,
+    required this.rawLog,
+  });
+
+  final String summary;
+  final String rawLog;
+
+  @override
+  String toString() => summary;
+}

@@ -1,0 +1,39 @@
+# ==============================================================================
+# Cargo.toml — Crate nativo Rust de Aura Music para yt-dlp y QuickJS-ng
+# ------------------------------------------------------------------------------
+# Todas las dependencias utilizan licencias permisivas (MIT / Apache-2.0):
+#   - rquickjs (MIT): bindings seguros de QuickJS-ng para ejecutar los retos
+#     JavaScript (yt-dlp-ejs) de YouTube en 32 bits (armeabi-v7a) y 64 bits
+#     (arm64-v8a).
+#   - lofty (MIT / Apache-2.0): inspección de propiedades de audio y escritura
+#     nativa de etiquetas + carátulas sin depender de FFmpeg GPL.
+#   - jni (MIT / Apache-2.0): puente nativo Kotlin <-> Rust.
+#   - serde / serde_json (MIT / Apache-2.0): serialización estructurada.
+# ==============================================================================
+
+[package]
+name = "aura_yt_engine"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Motor nativo Rust (QuickJS-ng + verificador/etiquetador de audio Lofty) para Aura Music"
+
+[lib]
+name = "aura_yt_rust"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "aura_qjs"
+path = "src/bin/aura_qjs.rs"
+
+[dependencies]
+rquickjs = { version = "0.14", features = ["bindgen"] }
+lofty = "0.22"
+jni = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "symbols"
