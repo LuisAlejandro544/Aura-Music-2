@@ -35,10 +35,12 @@ val requestedAbis = when {
     else -> listOf("armeabi-v7a", "arm64-v8a")
 }
 
+val configuredNdkVersion = "28.2.13676358"
+
 android {
     namespace = "com.auramusic.player"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = configuredNdkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -65,8 +67,12 @@ android {
     }
 
     sourceSets {
-        getByName("debug").jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs/debug"))
-        getByName("release").jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs/release"))
+        getByName("debug").jniLibs.directories.add(
+            layout.buildDirectory.dir("rustJniLibs/debug").get().asFile.absolutePath
+        )
+        getByName("release").jniLibs.directories.add(
+            layout.buildDirectory.dir("rustJniLibs/release").get().asFile.absolutePath
+        )
     }
 
     packaging {
@@ -110,7 +116,8 @@ chaquopy {
         extractPackages("yt_dlp_ejs", "certifi")
         pyc {
             src = true
-            std = true
+            pip = true
+            stdlib = true
         }
     }
 }
@@ -164,7 +171,7 @@ fun registerAuraRustTask(variant: String) {
         workingDir = rustCrateDir
 
         val ndkPath = if (androidSdkDir.isNotEmpty()) {
-            "$androidSdkDir/ndk/${android.ndkVersion}"
+            "$androidSdkDir/ndk/$configuredNdkVersion"
         } else {
             System.getenv("ANDROID_NDK_HOME") ?: ""
         }
@@ -210,7 +217,7 @@ fun registerAuraRustTask(variant: String) {
         }
     }
 
-    tasks.matching { it.name == "merge${capitalized}JniLibFolders" }.configure {
+    tasks.matching { it.name == "merge${capitalized}JniLibFolders" }.configureEach {
         dependsOn(taskName)
     }
 }
