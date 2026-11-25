@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícono adaptativo nativo para Android 9+ (minSdk 28) -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/aura_alabaster" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
