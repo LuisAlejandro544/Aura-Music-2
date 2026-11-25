@@ -30,13 +30,9 @@ fn print_help() {
     println!("  --script FILE      execute FILE as script");
 }
 
-fn format_js_args<'js>(ctx: &Ctx<'js>, args: Vec<Value<'js>>) -> String {
+fn format_coerced_args(args: Vec<Coerced<String>>) -> String {
     args.into_iter()
-        .map(|val| {
-            Coerced::<String>::from_js(ctx, val)
-                .map(|c| c.0)
-                .unwrap_or_else(|_| "[object]".to_string())
-        })
+        .map(|c| c.0)
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -45,14 +41,14 @@ fn register_console<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let console = Object::new(ctx.clone())?;
 
-    let log_fn = Function::new(ctx.clone(), |ctx: Ctx<'_>, Rest(args): Rest<Value<'_>>| {
-        println!("{}", format_js_args(&ctx, args));
+    let log_fn = Function::new(ctx.clone(), |Rest(args): Rest<Coerced<String>>| {
+        println!("{}", format_coerced_args(args));
     })?;
-    let warn_fn = Function::new(ctx.clone(), |ctx: Ctx<'_>, Rest(args): Rest<Value<'_>>| {
-        eprintln!("{}", format_js_args(&ctx, args));
+    let warn_fn = Function::new(ctx.clone(), |Rest(args): Rest<Coerced<String>>| {
+        eprintln!("{}", format_coerced_args(args));
     })?;
-    let print_fn = Function::new(ctx.clone(), |ctx: Ctx<'_>, Rest(args): Rest<Value<'_>>| {
-        println!("{}", format_js_args(&ctx, args));
+    let print_fn = Function::new(ctx.clone(), |Rest(args): Rest<Coerced<String>>| {
+        println!("{}", format_coerced_args(args));
     })?;
 
     console.set("log", log_fn.clone())?;

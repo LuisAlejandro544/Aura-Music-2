@@ -327,7 +327,7 @@ pub fn verify_and_tag_audio_file(
     let mut tags_embedded = false;
     let mut artwork_embedded = false;
 
-    if let Ok(probe) = Probe::open(path).and_then(|p| p.guess_file_type()) {
+    if let Ok(probe) = Probe::open(path).and_then(|p| Ok(p.guess_file_type()?)) {
         if let Ok(mut tagged_file) = probe.read() {
             let ft = tagged_file.file_type();
             final_mime = mime_for_filetype(ft, fallback_mime);
