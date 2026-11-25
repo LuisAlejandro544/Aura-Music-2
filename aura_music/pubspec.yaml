@@ -36,10 +36,6 @@ dependencies:
   # Animaciones fluidas basadas en resortes y transiciones suaves (Licencia MIT)
   flutter_animate: ^4.5.0
 
-  # Selector auxiliar multiplataforma; en Android la importación principal usa
-  # Storage Access Framework (SAF) nativo con permisos persistentes (Licencia MIT)
-  file_picker: ^8.1.2
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

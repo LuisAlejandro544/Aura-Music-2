@@ -132,11 +132,11 @@ jobs:
           restore-keys: |
             pub-${{ runner.os }}-
 
-      # 7. Configurar Gradle con su caché oficial integrada
+      # 7. Configurar Gradle con su caché oficial integrada (Flutter 3.50 requiere >= 9.3.1)
       - name: Configurar Gradle y su caché
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.7"
+          gradle-version: "9.5.0"
 
       # 8. Rust condicional: solo se instala y descarga si el proyecto contiene Cargo.toml
       - name: Instalar Rust Toolchain (Android 32 y 64 bits) si es necesario
@@ -174,7 +174,7 @@ jobs:
         run: |
           flutter pub get
           if [ ! -f "android/gradlew" ]; then
-            (cd android && gradle wrapper --gradle-version 8.7)
+            (cd android && gradle wrapper --gradle-version 9.5.0)
           fi
           chmod +x android/gradlew
 
