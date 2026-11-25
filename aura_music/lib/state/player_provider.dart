@@ -3,8 +3,9 @@
 // -----------------------------------------------------------------------------
 // Qué hace este archivo:
 //   Sincroniza la cola de reproducción, posición actual, Play/Pause, Skip,
-//   Shuffle y Repeat con Media3 ExoPlayer (a través de AudioEnginePort) y
-//   guarda la última pista/posición para reanudación rápida al abrir Aura Music.
+//   Shuffle y Repeat con Media3 ExoPlayer (a través de AudioEnginePort),
+//   emite señales implícitas locales de streaming (>70% completado, skip <20s)
+//   y guarda la última pista/posición para reanudación rápida al abrir Aura Music.
 // =============================================================================
 
 import 'dart:async';
@@ -53,6 +54,18 @@ class PlayerProvider extends ChangeNotifier {
   int _eqMutationSeq = 0;
   Spatial8dState _spatial8d = const Spatial8dState();
   int _spatial8dMutationSeq = 0;
+
+  AudioTrack? _activeStreamTrack;
+  int _activeStreamMaxPosMs = 0;
+  int _activeStreamDurationMs = 0;
+  bool _recordedStreamCompletion = false;
+
+  void Function(
+    AudioTrack track, {
+    bool played,
+    bool completed,
+    bool skippedEarly,
+  })? onStreamSignal;
 
   List<AudioTrack> get queue => List.unmodifiable(_queue);
   int get currentIndex => _currentIndex;
@@ -125,6 +138,36 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  void _finalizeStreamSession({bool evaluateSkip = true}) {
+    final prev = _activeStreamTrack;
+    if (prev == null) return;
+    if (evaluateSkip &&
+        !_recordedStreamCompletion &&
+        _activeStreamMaxPosMs > 1000 &&
+        _activeStreamMaxPosMs < 20000) {
+      onStreamSignal?.call(prev, skippedEarly: true);
+    }
+    _activeStreamTrack = null;
+    _activeStreamMaxPosMs = 0;
+    _activeStreamDurationMs = 0;
+    _recordedStreamCompletion = false;
+  }
+
+  void _beginStreamSession(AudioTrack track) {
+    if (!track.isStreamTrack) {
+      _activeStreamTrack = null;
+      _activeStreamMaxPosMs = 0;
+      _activeStreamDurationMs = 0;
+      _recordedStreamCompletion = false;
+      return;
+    }
+    _activeStreamTrack = track;
+    _activeStreamMaxPosMs = 0;
+    _activeStreamDurationMs = track.durationMs;
+    _recordedStreamCompletion = false;
+    onStreamSignal?.call(track, played: true);
+  }
+
   void _onNativePlaybackEvent(NativePlaybackEvent event) {
     final previousTrackId = currentTrack?.id;
     _isPlaying = event.isPlaying;
@@ -151,9 +194,31 @@ class PlayerProvider extends ChangeNotifier {
 
     final newTrack = currentTrack;
     if (newTrack != null && newTrack.id != previousTrackId) {
+      _finalizeStreamSession(evaluateSkip: true);
       if (!newTrack.isStreamTrack) {
         _library.markPlayed(newTrack.id);
         _persistLastSession(newTrack.id, event.positionMs);
+      } else {
+        _beginStreamSession(newTrack);
+      }
+    } else if (newTrack != null &&
+        _activeStreamTrack != null &&
+        _activeStreamTrack!.id == newTrack.id) {
+      if (!_isScrubbing && event.positionMs > _activeStreamMaxPosMs) {
+        _activeStreamMaxPosMs = event.positionMs;
+      }
+      if (event.durationMs > 0) {
+        _activeStreamDurationMs = event.durationMs;
+      }
+      final effectiveDur = _activeStreamDurationMs > 0
+          ? _activeStreamDurationMs
+          : _activeStreamTrack!.durationMs;
+      final reachedComplete = effectiveDur > 0
+          ? (_activeStreamMaxPosMs >= effectiveDur * 0.70)
+          : (_activeStreamMaxPosMs >= 45000);
+      if (reachedComplete && !_recordedStreamCompletion) {
+        _recordedStreamCompletion = true;
+        onStreamSignal?.call(_activeStreamTrack!, completed: true);
       }
     }
 
@@ -163,20 +228,24 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> playQueue(List<AudioTrack> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     final clampedIndex = startIndex.clamp(0, tracks.length - 1);
+    final target = tracks[clampedIndex];
+    _finalizeStreamSession(evaluateSkip: _activeStreamTrack?.id != target.id);
+
     _queue = List<AudioTrack>.from(tracks);
     _currentIndex = clampedIndex;
     _position = Duration.zero;
     _bufferedPosition = Duration.zero;
-    _duration = _queue[clampedIndex].duration;
+    _duration = target.duration;
     _isPlaying = true;
-    _isBuffering = _queue[clampedIndex].isStreamTrack;
+    _isBuffering = target.isStreamTrack;
     _errorMessage = null;
     notifyListeners();
 
-    final target = _queue[clampedIndex];
     if (!target.isStreamTrack) {
       _library.markPlayed(target.id);
       _persistLastSession(target.id, 0);
+    } else {
+      _beginStreamSession(target);
     }
 
     await _engine.setQueueAndPlay(
@@ -216,13 +285,21 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> jumpToQueueIndex(int index) async {
     if (index < 0 || index >= _queue.length) return;
+    final target = _queue[index];
+    _finalizeStreamSession(evaluateSkip: _activeStreamTrack?.id != target.id);
     _currentIndex = index;
     _position = Duration.zero;
     _bufferedPosition = Duration.zero;
-    _duration = _queue[index].duration;
+    _duration = target.duration;
     _isPlaying = true;
-    _isBuffering = _queue[index].isStreamTrack;
+    _isBuffering = target.isStreamTrack;
     notifyListeners();
+    if (!target.isStreamTrack) {
+      _library.markPlayed(target.id);
+      _persistLastSession(target.id, 0);
+    } else {
+      _beginStreamSession(target);
+    }
     await _engine.skipToIndex(index);
   }
 

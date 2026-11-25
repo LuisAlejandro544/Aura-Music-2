@@ -12,7 +12,7 @@
 - **Importación privada**: Storage Access Framework (`AuraSafImporter.kt`) con permisos persistentes (`takePersistableUriPermission`) sobre archivos/carpetas elegidas por el usuario.
 - **Edición de metadatos y carátula WebP sin pérdida**:
   - `EditTrackMetadataScreen` + `AuraArtworkProcessor.kt` (`Dispatchers.IO` + `ImageDecoder` API 28+) para conversión a WebP sin pérdida en `filesDir/custom_artworks/`.
-  - Persistencia en SQLite (`LibraryDatabase` v2) preservando ediciones personalizadas.
+  - Persistencia en SQLite (`LibraryDatabase` v3: `tracks`, `playlists`, `explore_signals`, `track_youtube_seeds` y `explore_feed_cache`) preservando ediciones personalizadas.
 - **Arquitecturas Android soportadas**: `armeabi-v7a` (32 bits) y `arm64-v8a` (64 bits), `minSdk = 28` (Android 9+).
 
 ---
@@ -39,7 +39,7 @@ Aura Music ya integra Rust en producción mediante el crate `aura_yt_engine` (li
 ### Orquestación mínima y auto-actualizador en Python (`Chaquopy 17.2.0`)
 - **Archivo**: `aura_music/android/app/src/main/python/aura_yt_engine.py` (con tests unitarios en `aura_music/test/python/test_aura_yt_engine.py`).
 - **Dependencias base**: `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps`, `certifi` sobre Python `3.11`.
-- Expone `search_explore` (búsqueda rápida `ytsearchN:` / playlists con `extract_flat`), `resolve_stream` (resolución de URL directa + headers para streaming progresivo en `AuraStreamCache`) y `download_audio` (descarga completa a `filesDir/aura_downloads/`), usando `js_runtimes={'quickjs': {'path': quickjs_path}}`.
+- Expone `search_explore` (búsqueda rápida `ytsearchN:` / playlists con `extract_flat`), `fetch_explore_recommendations` (Mixes `RD<videoId>` sin servidor a partir de señales locales de `TasteProfiler` + filtros de duración/título), `resolve_stream` (resolución de URL directa + headers para streaming progresivo en `AuraStreamCache`) y `download_audio` (descarga completa a `filesDir/aura_downloads/`), usando `js_runtimes={'quickjs': {'path': quickjs_path}}`.
 - **Auto-actualizador desde PyPI sin recompilar APK**:
   - Consulta la API JSON oficial de PyPI para `yt-dlp` y `yt-dlp-ejs`, descarga únicamente wheels Python puros (`py3-none-any.whl`), verifica su digest **SHA-256** y previene ataques **ZipSlip** antes de extraerlos en `filesDir/yt_dlp_updates/`.
   - Prioriza ese directorio en `sys.path[0]`, recarga `sys.modules` en caliente y permite restaurar las versiones originales incluidas en el APK en cualquier momento.

@@ -11,7 +11,7 @@ Lee este archivo primero cuando abras el repositorio en una nueva sesión para o
 | Arranque, compuerta de permisos y providers | `aura_music/lib/main.dart`, `aura_music/lib/screens/permissions/permissions_screen.dart` |
 | Navegación principal, barra inferior y MiniPlayer | `aura_music/lib/screens/app_shell.dart`, `aura_music/lib/widgets/mini_player.dart` |
 | Pantallas principales, Explorar, ecualizador, Audio 8D, descarga y configuración | `aura_music/lib/screens/{home,explore,search,library,collection,player,equalizer,spatial,metadata,import,settings}/` |
-| Estado de Explorar, búsqueda online y resolución de streams | `aura_music/lib/state/explore_provider.dart` |
+| Estado de Explorar, "Para ti", búsqueda y resolución de streams | `aura_music/lib/state/explore_provider.dart`, `aura_music/lib/core/recommendations/taste_profiler.dart` |
 | Estado de biblioteca, descargas, edición y SQLite | `aura_music/lib/state/library_provider.dart`, `aura_music/lib/core/storage/library_database.dart` |
 | Estado de reproducción, cola, DSP y puente Dart <-> Kotlin | `aura_music/lib/state/player_provider.dart`, `aura_music/lib/core/audio/` |
 | Tema claro/oscuro, preferencias, caché stream y auto-actualizador | `aura_music/lib/state/settings_provider.dart`, `aura_music/lib/core/theme/aura_theme.dart` |
@@ -37,7 +37,7 @@ Lee este archivo primero cuando abras el repositorio en una nueva sesión para o
    - Carátula personalizada WebP (o de descarga) -> `filesDir/custom_artworks/` (persistente).
    - Wheels Python auto-actualizados (`yt-dlp`, `yt-dlp-ejs`) -> `filesDir/yt_dlp_updates/` (priorizados en `sys.path[0]`, verificados con SHA-256 y restaurables al estado base del APK).
 6. **Re-importación segura**: Nunca sobrescribas títulos, artistas, álbumes o carátulas cuando `AudioTrack.hasCustomMetadata == true`.
-7. **Versiones de esquema SQLite**: `LibraryDatabase` está en `_dbVersion = 2`. Las pistas en streaming (`aura-stream://`) NO se guardan en SQLite ni deben añadir campos fuera del esquema a `AudioTrack.toMap()`. Si agregas columnas reales en el futuro, incrementa `_dbVersion` y escribe `onUpgrade` idempotente (verificando `PRAGMA table_info(tracks)`).
+7. **Versiones de esquema SQLite**: `LibraryDatabase` está en `_dbVersion = 3` (`tracks`, `playlists`, `playlist_tracks`, `explore_signals`, `track_youtube_seeds`, `explore_feed_cache`). Las pistas en streaming (`aura-stream://`) NO se insertan en `tracks` ni deben añadir campos fuera del esquema a `AudioTrack.toMap()`. Si agregas columnas o tablas nuevas en el futuro, incrementa `_dbVersion` y escribe `onUpgrade` idempotente (`CREATE TABLE IF NOT EXISTS` / verificando `PRAGMA table_info(tracks)`).
 8. **Sistema de tema Claro/Oscuro (`AuraPalette`)**: En pantallas y hojas modales usa `AuraTheme.of(context)` en lugar de `AuraColors.*` estático, para mantener consistencia en ambos modos (*Acoustic Warmth* claro y oscuro).
 9. **Pantallas estrechas (360 dp)**: En cabeceras con múltiples acciones o filas con insignias técnicas + botones, usa siempre `Expanded` / `Flexible` y `maxLines: 1, overflow: TextOverflow.ellipsis`.
 

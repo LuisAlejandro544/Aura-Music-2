@@ -41,6 +41,11 @@ abstract class AudioEnginePort {
     int limit = 18,
   });
 
+  Future<ExplorePersonalizedFeed> fetchExploreRecommendations({
+    required String tastePayloadJson,
+    int limit = 16,
+  });
+
   Future<ResolvedStreamInfo> resolveExploreStream({
     required String url,
     String videoId = '',

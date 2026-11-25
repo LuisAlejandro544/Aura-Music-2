@@ -867,6 +867,21 @@ class ExploreTrackItem {
     );
   }
 
+  Map<String, dynamic> toMap() => {
+        'videoId': videoId,
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'durationMs': durationMs,
+        'thumbnailUrl': thumbnailUrl,
+        'webpageUrl': webpageUrl,
+        'viewCount': viewCount,
+        'cachedBytes': cachedBytes,
+        'resolvedMimeType': resolvedMimeType,
+        'resolvedBitrateKbps': resolvedBitrateKbps,
+        'resolvedSampleRateHz': resolvedSampleRateHz,
+      };
+
   factory ExploreTrackItem.fromMap(Map<String, dynamic> map) {
     return ExploreTrackItem(
       videoId: (map['videoId'] ?? '').toString(),
@@ -878,6 +893,11 @@ class ExploreTrackItem {
       webpageUrl: (map['webpageUrl'] ?? '').toString(),
       viewCount: (map['viewCount'] as num?)?.toInt() ?? 0,
       cachedBytes: (map['cachedBytes'] as num?)?.toInt() ?? 0,
+      resolvedMimeType: (map['resolvedMimeType'] ?? '').toString(),
+      resolvedBitrateKbps:
+          (map['resolvedBitrateKbps'] as num?)?.toInt() ?? 0,
+      resolvedSampleRateHz:
+          (map['resolvedSampleRateHz'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -891,6 +911,142 @@ class ExploreSearchResult {
 
   final String query;
   final List<ExploreTrackItem> items;
+}
+
+@immutable
+class ExploreSignalRecord {
+  const ExploreSignalRecord({
+    required this.videoId,
+    required this.title,
+    required this.artist,
+    this.webpageUrl = '',
+    this.thumbnailUrl = '',
+    this.durationMs = 0,
+    this.playCount = 0,
+    this.completeCount = 0,
+    this.skipCount = 0,
+    this.queueCount = 0,
+    this.downloaded = false,
+    this.lastInteractedAtMs = 0,
+  });
+
+  final String videoId;
+  final String title;
+  final String artist;
+  final String webpageUrl;
+  final String thumbnailUrl;
+  final int durationMs;
+  final int playCount;
+  final int completeCount;
+  final int skipCount;
+  final int queueCount;
+  final bool downloaded;
+  final int lastInteractedAtMs;
+
+  factory ExploreSignalRecord.fromMap(Map<String, dynamic> map) {
+    return ExploreSignalRecord(
+      videoId: (map['videoId'] ?? '').toString(),
+      title: (map['title'] ?? '').toString(),
+      artist: (map['artist'] ?? '').toString(),
+      webpageUrl: (map['webpageUrl'] ?? '').toString(),
+      thumbnailUrl: (map['thumbnailUrl'] ?? '').toString(),
+      durationMs: (map['durationMs'] as num?)?.toInt() ?? 0,
+      playCount: (map['playCount'] as num?)?.toInt() ?? 0,
+      completeCount: (map['completeCount'] as num?)?.toInt() ?? 0,
+      skipCount: (map['skipCount'] as num?)?.toInt() ?? 0,
+      queueCount: (map['queueCount'] as num?)?.toInt() ?? 0,
+      downloaded: (map['downloaded'] == true) || (map['downloaded'] == 1),
+      lastInteractedAtMs:
+          (map['lastInteractedAtMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+@immutable
+class ExplorePersonalizedFeed {
+  const ExplorePersonalizedFeed({
+    this.forYou = const [],
+    this.becauseLabel = '',
+    this.becauseItems = const [],
+    this.discoveryItems = const [],
+    this.resolvedSeeds = const {},
+    this.generatedAtMs = 0,
+    this.isColdStart = false,
+  });
+
+  final List<ExploreTrackItem> forYou;
+  final String becauseLabel;
+  final List<ExploreTrackItem> becauseItems;
+  final List<ExploreTrackItem> discoveryItems;
+  final Map<String, String> resolvedSeeds;
+  final int generatedAtMs;
+  final bool isColdStart;
+
+  bool get isEmpty =>
+      forYou.isEmpty && becauseItems.isEmpty && discoveryItems.isEmpty;
+
+  ExplorePersonalizedFeed copyWith({
+    List<ExploreTrackItem>? forYou,
+    String? becauseLabel,
+    List<ExploreTrackItem>? becauseItems,
+    List<ExploreTrackItem>? discoveryItems,
+    Map<String, String>? resolvedSeeds,
+    int? generatedAtMs,
+    bool? isColdStart,
+  }) {
+    return ExplorePersonalizedFeed(
+      forYou: forYou ?? this.forYou,
+      becauseLabel: becauseLabel ?? this.becauseLabel,
+      becauseItems: becauseItems ?? this.becauseItems,
+      discoveryItems: discoveryItems ?? this.discoveryItems,
+      resolvedSeeds: resolvedSeeds ?? this.resolvedSeeds,
+      generatedAtMs: generatedAtMs ?? this.generatedAtMs,
+      isColdStart: isColdStart ?? this.isColdStart,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'forYou': forYou.map((e) => e.toMap()).toList(),
+        'becauseLabel': becauseLabel,
+        'becauseItems': becauseItems.map((e) => e.toMap()).toList(),
+        'discoveryItems': discoveryItems.map((e) => e.toMap()).toList(),
+        'generatedAtMs': generatedAtMs,
+        'isColdStart': isColdStart,
+      };
+
+  static List<ExploreTrackItem> _parseItems(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<dynamic, dynamic>>()
+        .map((m) => ExploreTrackItem.fromMap(Map<String, dynamic>.from(m)))
+        .where((item) => item.videoId.isNotEmpty)
+        .toList();
+  }
+
+  factory ExplorePersonalizedFeed.fromMap(Map<String, dynamic> map) {
+    final rawSeeds = map['resolvedSeeds'];
+    final seedsMap = <String, String>{};
+    if (rawSeeds is List) {
+      for (final entry in rawSeeds) {
+        if (entry is Map) {
+          final tid = (entry['trackId'] ?? '').toString();
+          final vid = (entry['videoId'] ?? '').toString();
+          if (tid.isNotEmpty && vid.isNotEmpty) {
+            seedsMap[tid] = vid;
+          }
+        }
+      }
+    }
+    return ExplorePersonalizedFeed(
+      forYou: _parseItems(map['forYou']),
+      becauseLabel: (map['becauseLabel'] ?? '').toString(),
+      becauseItems: _parseItems(map['becauseItems']),
+      discoveryItems: _parseItems(map['discoveryItems']),
+      resolvedSeeds: seedsMap,
+      generatedAtMs: (map['generatedAtMs'] as num?)?.toInt() ?? 0,
+      isColdStart: map['isColdStart'] == true,
+    );
+  }
 }
 
 @immutable

@@ -11,8 +11,10 @@
 #     FFmpeg GPL y captura el log técnico completo (debug/warnings/errors y
 #     traceback) para diagnósticos en dispositivo móvil.
 #   - Incluye búsqueda ligera para Explorar (`search_explore` con `ytsearch` /
-#     `extract_flat`) y resolución de stream directo (`resolve_stream` con
-#     `download=False`) devolviendo URL + cabeceras HTTP exactas para Media3.
+#     `extract_flat`), recomendaciones personalizadas sin servidor (`fetch_explore_recommendations`
+#     mediante listas automáticas Mix `RD<videoId>` y semillas locales) y
+#     resolución de stream directo (`resolve_stream` con `download=False`)
+#     devolviendo URL + cabeceras HTTP exactas para Media3.
 #   - Incluye auto-actualizador seguro vía PyPI JSON API + verificación SHA-256
 #     para actualizar los wheels puros Python de `yt-dlp` y `yt-dlp-ejs` en
 #     `filesDir/yt_dlp_updates/` con recarga en caliente de `sys.modules`.
@@ -1314,3 +1316,399 @@ def resolve_stream(
         logger=logger,
     )
     return json.dumps({"ok": False, "error": summary, "rawError": raw_report})
+
+
+_GENERIC_ARTISTS = {
+    "",
+    "artista desconocido",
+    "unknown artist",
+    "unknown",
+    "sin álbum",
+    "sin album",
+    "música importada",
+    "musica importada",
+    "descargas aura",
+    "explorar aura",
+    "various artists",
+    "varios artistas",
+}
+
+_TITLE_NOISE_RE = re.compile(
+    r"(\(|\[)\s*(official\s*(music\s*)?(video|audio|lyric\s*video|visualizer)|"
+    r"video\s*oficial|audio\s*oficial|letra|lyrics?|hd|4k|hq|remastered(\s*\d{4})?|"
+    r"en\s*vivo|live)\s*(\)|\])",
+    re.IGNORECASE,
+)
+_YT_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def is_generic_artist_name(name: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", (name or "").strip().lower())
+    return cleaned in _GENERIC_ARTISTS or cleaned.startswith("track ")
+
+
+def normalize_music_title(title: str) -> str:
+    cleaned = _TITLE_NOISE_RE.sub(" ", title or "")
+    cleaned = re.sub(r"[^\w\s]", " ", cleaned.lower(), flags=re.UNICODE)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def is_reasonable_music_duration(
+    duration_ms: int, preferred_ms: int = 210_000
+) -> bool:
+    """Descarta clips muy cortos (<45 s) o podcasts/compilaciones (>15 min)."""
+    if duration_ms <= 0:
+        return True
+    if duration_ms < 45_000:
+        return False
+    pref = max(120_000, min(int(preferred_ms or 210_000), 480_000))
+    max_allowed = max(900_000, pref * 3)
+    return duration_ms <= max_allowed
+
+
+def build_rd_mix_url(video_id: str) -> str:
+    vid = (video_id or "").strip()
+    if _YT_VIDEO_ID_RE.match(vid):
+        return f"https://www.youtube.com/watch?v={vid}&list=RD{vid}"
+    return ""
+
+
+def _extract_flat_list(
+    ydl_cls,
+    target_url: str,
+    limit: int,
+    quickjs_path: str,
+    logger: _CaptureLogger,
+    is_playlist_url: bool = False,
+) -> list[dict]:
+    safe_limit = max(1, min(int(limit or 18), 35))
+    js_runtimes = {"quickjs": {"path": quickjs_path}} if quickjs_path else {"quickjs": {}}
+    opts = {
+        "extract_flat": "in_playlist" if is_playlist_url else True,
+        "skip_download": True,
+        "noplaylist": False if is_playlist_url else True,
+        "playlistend": safe_limit,
+        "ignoreerrors": True,
+        "noprogress": True,
+        "no_color": True,
+        "quiet": True,
+        "socket_timeout": 18,
+        "retries": 1,
+        "js_runtimes": js_runtimes,
+        "logger": logger,
+    }
+    try:
+        with ydl_cls(opts) as ydl:
+            info = ydl.extract_info(target_url, download=False)
+            if not info:
+                return []
+            raw_entries = info.get("entries")
+            if raw_entries is None:
+                raw_entries = [info]
+            parsed_list = []
+            for entry in raw_entries:
+                parsed = _parse_explore_entry(entry)
+                if parsed is not None:
+                    parsed_list.append(parsed)
+                    if len(parsed_list) >= safe_limit:
+                        break
+            return parsed_list
+    except Exception as exc:
+        logger.warning(f"extract_flat fallo para {target_url}: {exc}")
+        return []
+
+
+def _dedupe_and_filter_items(
+    raw_items: list[dict],
+    exclude_video_ids: set[str],
+    seen_video_ids: set[str],
+    seen_title_keys: set[str],
+    preferred_duration_ms: int,
+    max_count: int,
+) -> list[dict]:
+    out = []
+    for item in raw_items:
+        vid = str(item.get("videoId") or "").strip()
+        if not vid or vid in exclude_video_ids or vid in seen_video_ids:
+            continue
+        dur = int(item.get("durationMs") or 0)
+        if not is_reasonable_music_duration(dur, preferred_duration_ms):
+            continue
+        norm_title = normalize_music_title(str(item.get("title") or ""))
+        norm_artist = str(item.get("artist") or "").strip().lower()
+        title_key = f"{norm_title}::{norm_artist}" if norm_title else vid
+        if title_key in seen_title_keys:
+            continue
+        seen_video_ids.add(vid)
+        seen_title_keys.add(title_key)
+        out.append(item)
+        if len(out) >= max_count:
+            break
+    return out
+
+
+def fetch_explore_recommendations(
+    taste_payload_json: str,
+    limit: int = 16,
+    quickjs_path: str = "",
+    update_dir: str = "",
+) -> str:
+    """Genera recomendaciones personalizadas sin servidor usando Mix RD + semillas."""
+    _configure_tls_and_paths(update_dir or None, quickjs_path)
+
+    try:
+        payload = json.loads(taste_payload_json or "{}")
+        if not isinstance(payload, dict):
+            payload = {}
+    except Exception:
+        payload = {}
+
+    try:
+        import yt_dlp
+    except Exception as exc:
+        return json.dumps(
+            {
+                "ok": False,
+                "forYou": [],
+                "becauseLabel": "",
+                "becauseItems": [],
+                "discoveryItems": [],
+                "resolvedSeeds": [],
+                "error": f"No se pudo cargar yt-dlp: {exc}",
+                "rawError": traceback.format_exc(),
+            }
+        )
+
+    safe_limit = max(6, min(int(limit or 16), 24))
+    seed_tracks = payload.get("seedTracks") or []
+    seed_artists = payload.get("seedArtists") or []
+    recent_queries = [
+        str(q).strip()
+        for q in (payload.get("recentQueries") or [])
+        if str(q).strip()
+    ]
+    exclude_ids = {
+        str(v).strip()
+        for v in (payload.get("excludeVideoIds") or [])
+        if str(v).strip()
+    }
+    preferred_dur = int(payload.get("preferredDurationMs") or 210_000)
+
+    logger = _CaptureLogger()
+    resolved_seeds: list[dict[str, str]] = []
+    active_seeds: list[dict[str, str]] = []
+
+    # 1. Resolver videoId para hasta 2 semillas (directo o via ytsearch1 cacheable)
+    for seed in seed_tracks:
+        if not isinstance(seed, dict):
+            continue
+        if len(active_seeds) >= 2:
+            break
+        track_id = str(seed.get("trackId") or "").strip()
+        vid = str(seed.get("videoId") or "").strip()
+        title = str(seed.get("title") or "").strip()
+        artist = str(seed.get("artist") or "").strip()
+
+        if not _YT_VIDEO_ID_RE.match(vid):
+            if not title:
+                continue
+            search_parts = []
+            if artist and not is_generic_artist_name(artist):
+                search_parts.append(artist)
+            search_parts.append(title)
+            lookup_query = " ".join(search_parts).strip()
+            if not lookup_query:
+                continue
+            found = _extract_flat_list(
+                yt_dlp.YoutubeDL,
+                f"ytsearch1:{lookup_query}",
+                1,
+                quickjs_path,
+                logger,
+                is_playlist_url=False,
+            )
+            if found and _YT_VIDEO_ID_RE.match(str(found[0].get("videoId") or "")):
+                vid = str(found[0]["videoId"])
+                if track_id:
+                    resolved_seeds.append({"trackId": track_id, "videoId": vid})
+            else:
+                continue
+
+        exclude_ids.add(vid)
+        active_seeds.append(
+            {
+                "trackId": track_id,
+                "videoId": vid,
+                "title": title,
+                "artist": artist,
+            }
+        )
+
+    seen_video_ids: set[str] = set()
+    seen_title_keys: set[str] = set()
+
+    # 2. Extraer Mixes RD<videoId> de las semillas elegidas
+    mix_pools: list[list[dict]] = []
+    for seed in active_seeds:
+        mix_url = build_rd_mix_url(seed["videoId"])
+        if not mix_url:
+            continue
+        raw_mix = _extract_flat_list(
+            yt_dlp.YoutubeDL,
+            mix_url,
+            safe_limit + 6,
+            quickjs_path,
+            logger,
+            is_playlist_url=True,
+        )
+        mix_pools.append(raw_mix)
+
+    # Intercalar los mixes para equilibrio (regla 70/30 entre semillas)
+    interleaved: list[dict] = []
+    max_len = max((len(p) for p in mix_pools), default=0)
+    for idx in range(max_len):
+        for pool in mix_pools:
+            if idx < len(pool):
+                interleaved.append(pool[idx])
+
+    for_you = _dedupe_and_filter_items(
+        interleaved,
+        exclude_video_ids=exclude_ids,
+        seen_video_ids=seen_video_ids,
+        seen_title_keys=seen_title_keys,
+        preferred_duration_ms=preferred_dur,
+        max_count=safe_limit,
+    )
+
+    # Fallback si no habia semillas con RD o devolvio pocos resultados
+    clean_artists = [
+        str(a.get("name") or "").strip()
+        for a in seed_artists
+        if isinstance(a, dict)
+        and not is_generic_artist_name(str(a.get("name") or ""))
+    ]
+
+    if len(for_you) < 6 and clean_artists:
+        primary_artist = clean_artists[0]
+        raw_artist_hits = _extract_flat_list(
+            yt_dlp.YoutubeDL,
+            f"ytsearch{safe_limit}:{primary_artist} official audio",
+            safe_limit,
+            quickjs_path,
+            logger,
+            is_playlist_url=False,
+        )
+        extra = _dedupe_and_filter_items(
+            raw_artist_hits,
+            exclude_video_ids=exclude_ids,
+            seen_video_ids=seen_video_ids,
+            seen_title_keys=seen_title_keys,
+            preferred_duration_ms=preferred_dur,
+            max_count=safe_limit - len(for_you),
+        )
+        for_you.extend(extra)
+
+    # 3. Bloque "Porque escuchaste <Semilla>"
+    because_label = ""
+    because_items: list[dict] = []
+    if len(active_seeds) >= 2 and len(mix_pools) >= 2 and mix_pools[1]:
+        s2 = active_seeds[1]
+        because_label = (
+            f"Porque escuchaste {s2['artist']}"
+            if s2["artist"] and not is_generic_artist_name(s2["artist"])
+            else f"Porque escuchaste {s2['title']}"
+        )
+        because_items = _dedupe_and_filter_items(
+            mix_pools[1],
+            exclude_video_ids=exclude_ids,
+            seen_video_ids=seen_video_ids,
+            seen_title_keys=seen_title_keys,
+            preferred_duration_ms=preferred_dur,
+            max_count=10,
+        )
+    elif len(clean_artists) >= 2:
+        artist_two = clean_artists[1]
+        because_label = f"Porque escuchas {artist_two}"
+        raw_b = _extract_flat_list(
+            yt_dlp.YoutubeDL,
+            f"ytsearch12:{artist_two} mix audio",
+            12,
+            quickjs_path,
+            logger,
+            is_playlist_url=False,
+        )
+        because_items = _dedupe_and_filter_items(
+            raw_b,
+            exclude_video_ids=exclude_ids,
+            seen_video_ids=seen_video_ids,
+            seen_title_keys=seen_title_keys,
+            preferred_duration_ms=preferred_dur,
+            max_count=10,
+        )
+    elif active_seeds:
+        s1 = active_seeds[0]
+        target_name = (
+            s1["artist"]
+            if s1["artist"] and not is_generic_artist_name(s1["artist"])
+            else s1["title"]
+        )
+        if target_name:
+            because_label = f"Similar a {target_name}"
+            raw_b = _extract_flat_list(
+                yt_dlp.YoutubeDL,
+                f"ytsearch12:{target_name} similar music",
+                12,
+                quickjs_path,
+                logger,
+                is_playlist_url=False,
+            )
+            because_items = _dedupe_and_filter_items(
+                raw_b,
+                exclude_video_ids=exclude_ids,
+                seen_video_ids=seen_video_ids,
+                seen_title_keys=seen_title_keys,
+                preferred_duration_ms=preferred_dur,
+                max_count=10,
+            )
+
+    # 4. Bloque "Descubre parecido a tu biblioteca" (variedad 30%)
+    discovery_query = ""
+    if len(clean_artists) >= 2:
+        discovery_query = f"artists like {clean_artists[0]} {clean_artists[1]}"
+    elif clean_artists:
+        discovery_query = f"artists similar to {clean_artists[0]}"
+    elif recent_queries:
+        discovery_query = f"{recent_queries[0]} similar music"
+
+    discovery_items: list[dict] = []
+    if discovery_query:
+        raw_disc = _extract_flat_list(
+            yt_dlp.YoutubeDL,
+            f"ytsearch14:{discovery_query}",
+            14,
+            quickjs_path,
+            logger,
+            is_playlist_url=False,
+        )
+        discovery_items = _dedupe_and_filter_items(
+            raw_disc,
+            exclude_video_ids=exclude_ids,
+            seen_video_ids=seen_video_ids,
+            seen_title_keys=seen_title_keys,
+            preferred_duration_ms=preferred_dur,
+            max_count=10,
+        )
+
+    return json.dumps(
+        {
+            "ok": True,
+            "forYou": for_you,
+            "becauseLabel": because_label,
+            "becauseItems": because_items,
+            "discoveryItems": discovery_items,
+            "resolvedSeeds": resolved_seeds,
+            "error": "",
+            "rawError": "",
+        }
+    )
+

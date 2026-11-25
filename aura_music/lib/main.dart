@@ -32,7 +32,12 @@ void main() {
   final libraryProvider = LibraryProvider(engine: engine, database: database);
   final playerProvider = PlayerProvider(engine: engine, library: libraryProvider);
   final settingsProvider = SettingsProvider(engine: engine);
-  final exploreProvider = ExploreProvider(engine: engine);
+  final exploreProvider = ExploreProvider(
+    engine: engine,
+    database: database,
+    library: libraryProvider,
+  );
+  playerProvider.onStreamSignal = exploreProvider.handleStreamSignal;
 
   runApp(
     AuraMusicApp(

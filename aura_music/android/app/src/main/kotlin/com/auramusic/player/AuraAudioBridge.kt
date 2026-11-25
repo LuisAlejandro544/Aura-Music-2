@@ -646,6 +646,33 @@ class AuraAudioBridge(
                 }
             }
 
+            "fetchExploreRecommendations" -> {
+                val tastePayloadJson = call.argument<String>("tastePayloadJson") ?: "{}"
+                val limit = call.argument<Int>("limit") ?: 16
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.fetchExploreRecommendations(
+                            context = activity.applicationContext,
+                            tastePayloadJson = tastePayloadJson,
+                            limit = limit
+                        )
+                    }.fold(
+                        onSuccess = { payload -> result.success(payload) },
+                        onFailure = { err ->
+                            val rawDetail = when (err) {
+                                is YtDownloadDetailedException -> err.rawDetail
+                                else -> err.stackTraceToString()
+                            }
+                            result.error(
+                                "YT_RECOMMEND_ERR",
+                                err.message ?: "Error al generar recomendaciones",
+                                rawDetail
+                            )
+                        }
+                    )
+                }
+            }
+
             "resolveExploreStream" -> {
                 val url = call.argument<String>("url") ?: ""
                 val videoId = call.argument<String>("videoId") ?: ""

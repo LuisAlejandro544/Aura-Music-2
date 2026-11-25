@@ -252,6 +252,42 @@ class ExoPlayerBridge implements AudioEnginePort {
   }
 
   @override
+  Future<ExplorePersonalizedFeed> fetchExploreRecommendations({
+    required String tastePayloadJson,
+    int limit = 16,
+  }) async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'fetchExploreRecommendations',
+        {
+          'tastePayloadJson': tastePayloadJson,
+          'limit': limit,
+        },
+      );
+      if (raw == null || raw.isEmpty) {
+        return const ExplorePersonalizedFeed();
+      }
+      return ExplorePersonalizedFeed.fromMap({
+        ...raw,
+        'generatedAtMs': DateTime.now().millisecondsSinceEpoch,
+      });
+    } on PlatformException catch (e) {
+      final summary = (e.message ?? '').trim().isNotEmpty
+          ? e.message!.trim()
+          : 'Error al generar recomendaciones (${e.code})';
+      final rawDetails = (e.details?.toString() ?? '').trim();
+      throw YtDownloadFailure(
+        summary: summary,
+        rawLog: rawDetails.isNotEmpty
+            ? rawDetails
+            : 'Code: ${e.code}\nMessage: $summary',
+      );
+    } on MissingPluginException {
+      return const ExplorePersonalizedFeed();
+    }
+  }
+
+  @override
   Future<ResolvedStreamInfo> resolveExploreStream({
     required String url,
     String videoId = '',

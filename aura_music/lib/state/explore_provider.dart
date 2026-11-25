@@ -1,26 +1,38 @@
 // =============================================================================
-// explore_provider.dart — Estado modular de Explorar y streaming con yt-dlp
+// explore_provider.dart — Estado modular de Explorar, recomendaciones y streaming
 // -----------------------------------------------------------------------------
 // Qué hace este archivo:
-//   Administra la experiencia de descubrimiento tipo streaming en Aura Music:
-//   - Categorías curadas por género/estado de ánimo (consultadas bajo demanda
-//     con `yt-dlp` sin descargar todo por adelantado).
-//   - Búsqueda online por texto o URL de playlist pública, con historial de
-//     búsquedas recientes guardado localmente en SharedPreferences.
+//   Administra la experiencia de descubrimiento personalizado y streaming en Aura:
+//   - Sección "Para ti" sin servidor: combina biblioteca local, señales de
+//     streaming (`explore_signals`) y Mixes RD de YouTube vía `yt-dlp`.
+//   - Caché local SQLite (6 h) para apertura instantánea de la pestaña y
+//     reordenamiento dinámico de categorías según afinidades del usuario.
+//   - Búsqueda online por texto o URL de playlist pública, con historial
+//     reciente en SharedPreferences.
 //   - Resolución progresiva del flujo directo (`resolveExploreStream`) antes de
-//     enviar la cola a ExoPlayer (`SimpleCache` + `ResolvingDataSource`) para
-//     reproducir mientras se descarga en caché.
+//     enviar la cola a ExoPlayer (`SimpleCache` + `ResolvingDataSource`).
 // =============================================================================
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/audio/audio_engine_port.dart';
 import '../core/models/audio_track.dart';
+import '../core/recommendations/taste_profiler.dart';
+import '../core/storage/library_database.dart';
+import 'library_provider.dart';
 
 class ExploreProvider extends ChangeNotifier {
-  ExploreProvider({required AudioEnginePort engine}) : _engine = engine;
+  ExploreProvider({
+    required AudioEnginePort engine,
+    required LibraryDatabase database,
+    required LibraryProvider library,
+  })  : _engine = engine,
+        _database = database,
+        _library = library;
 
   static const String _prefRecentQueries = 'aura_explore_recent_queries';
+  static const String forYouCategoryId = 'for_you';
+  static const Duration _feedCacheTtl = Duration(hours: 6);
 
   static const List<ExploreCategory> categories = [
     ExploreCategory(
@@ -74,48 +86,208 @@ class ExploreProvider extends ChangeNotifier {
   ];
 
   final AudioEnginePort _engine;
+  final LibraryDatabase _database;
+  final LibraryProvider _library;
 
+  ExplorePersonalizedFeed _personalizedFeed = const ExplorePersonalizedFeed();
+  List<ExploreCategory> _orderedCategories = categories;
   List<ExploreTrackItem> _items = const [];
   List<String> _recentQueries = const [];
   StreamCacheStats _cacheStats = const StreamCacheStats();
 
-  String _activeCategoryId = categories.first.id;
+  bool _isPersonalizedMode = true;
+  String _activeCategoryId = forYouCategoryId;
   String _activeQuery = '';
   bool _hasInitializedOnce = false;
+  bool _isLoadingPersonalized = false;
   bool _isSearching = false;
   String? _resolvingVideoId;
   String? _errorMessage;
   String? _rawError;
   int _searchSeq = 0;
+  int _personalizedSeq = 0;
 
+  ExplorePersonalizedFeed get personalizedFeed => _personalizedFeed;
+  List<ExploreCategory> get orderedCategories => _orderedCategories;
   List<ExploreTrackItem> get items => _items;
   List<String> get recentQueries => _recentQueries;
   StreamCacheStats get cacheStats => _cacheStats;
+  bool get isPersonalizedMode => _isPersonalizedMode;
   String get activeCategoryId => _activeCategoryId;
   String get activeQuery => _activeQuery;
   bool get hasInitializedOnce => _hasInitializedOnce;
+  bool get isLoadingPersonalized => _isLoadingPersonalized;
   bool get isSearching => _isSearching;
   String? get resolvingVideoId => _resolvingVideoId;
   String? get errorMessage => _errorMessage;
   String? get rawError => _rawError;
 
   Future<void> ensureInitialDiscoveryLoaded() async {
-    await _loadHistoryAndCache();
-    if (_hasInitializedOnce || _isSearching) return;
+    final profile = await _hydrateLocalSignalsAndCache();
+    if (_hasInitializedOnce || _isLoadingPersonalized || _isSearching) return;
     _hasInitializedOnce = true;
-    await selectCategory(categories.first);
+
+    final needsRefresh = _personalizedFeed.isEmpty ||
+        (_personalizedFeed.isColdStart && profile.hasSignals);
+    if (needsRefresh) {
+      await refreshPersonalizedFeed(force: true);
+    }
   }
 
-  Future<void> _loadHistoryAndCache() async {
+  Future<TasteProfilePayload> _hydrateLocalSignalsAndCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_prefRecentQueries) ?? const [];
       _recentQueries = List<String>.from(saved);
     } catch (_) {}
+
     try {
       _cacheStats = await _engine.getStreamCacheStats();
     } catch (_) {}
+
+    var profile = TasteProfilePayload(
+      seedTracks: const [],
+      seedArtists: const [],
+      recentQueries: _recentQueries,
+      excludeVideoIds: const {},
+      excludeTitleKeys: const {},
+      preferredDurationMs: 210000,
+      hasSignals: false,
+    );
+
+    try {
+      final results = await Future.wait<dynamic>([
+        _database.getExploreSignals(),
+        _database.getTrackYoutubeSeeds(),
+        _database.getCachedExploreFeed(maxAge: _feedCacheTtl),
+      ]);
+      final signals = results[0] as List<ExploreSignalRecord>;
+      final seeds = results[1] as Map<String, String>;
+      final cachedFeed = results[2] as ExplorePersonalizedFeed?;
+
+      profile = TasteProfiler.buildProfile(
+        localTracks: _library.tracks,
+        exploreSignals: signals,
+        cachedSeedVideoIds: seeds,
+        recentQueries: _recentQueries,
+      );
+      _orderedCategories = TasteProfiler.rankCategories(categories, profile);
+
+      if (cachedFeed != null && !cachedFeed.isEmpty) {
+        _personalizedFeed =
+            TasteProfiler.rerankPersonalizedFeed(cachedFeed, profile);
+      }
+    } catch (_) {}
+
     notifyListeners();
+    return profile;
+  }
+
+  Future<void> refreshPersonalizedFeed({bool force = false}) async {
+    final seq = ++_personalizedSeq;
+    _hasInitializedOnce = true;
+    if (force || _personalizedFeed.isEmpty) {
+      _isLoadingPersonalized = true;
+      _errorMessage = null;
+      _rawError = null;
+      notifyListeners();
+    }
+
+    try {
+      final results = await Future.wait<dynamic>([
+        _database.getExploreSignals(),
+        _database.getTrackYoutubeSeeds(),
+      ]);
+      if (seq != _personalizedSeq) return;
+
+      final signals = results[0] as List<ExploreSignalRecord>;
+      final seeds = results[1] as Map<String, String>;
+
+      final profile = TasteProfiler.buildProfile(
+        localTracks: _library.tracks,
+        exploreSignals: signals,
+        cachedSeedVideoIds: seeds,
+        recentQueries: _recentQueries,
+      );
+      _orderedCategories = TasteProfiler.rankCategories(categories, profile);
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (!profile.hasSignals) {
+        final fallback = await _engine.searchExplore(
+          query: categories.first.query,
+          limit: 16,
+        );
+        if (seq != _personalizedSeq) return;
+        _personalizedFeed = ExplorePersonalizedFeed(
+          forYou: fallback.items,
+          generatedAtMs: nowMs,
+          isColdStart: true,
+        );
+        _cacheStats = await _engine.getStreamCacheStats();
+        return;
+      }
+
+      var rawFeed = await _engine.fetchExploreRecommendations(
+        tastePayloadJson: profile.toJsonString(),
+        limit: 16,
+      );
+      if (seq != _personalizedSeq) return;
+
+      if (rawFeed.resolvedSeeds.isNotEmpty) {
+        await _database.saveTrackYoutubeSeeds(rawFeed.resolvedSeeds);
+      }
+
+      var reranked = TasteProfiler.rerankPersonalizedFeed(rawFeed, profile);
+
+      // Si las semillas no arrojaron resultados (p.ej. red o Mix vacío), usa búsqueda del artista top
+      if (reranked.forYou.isEmpty) {
+        final fallbackQuery = profile.seedArtists.isNotEmpty
+            ? '${profile.seedArtists.first.name} official audio'
+            : categories.first.query;
+        final fallback =
+            await _engine.searchExplore(query: fallbackQuery, limit: 16);
+        if (seq != _personalizedSeq) return;
+        reranked = TasteProfiler.rerankPersonalizedFeed(
+          reranked.copyWith(forYou: fallback.items),
+          profile,
+        );
+      }
+
+      _personalizedFeed = reranked.copyWith(
+        generatedAtMs: nowMs,
+        isColdStart: false,
+      );
+      if (!_personalizedFeed.isEmpty) {
+        await _database.saveCachedExploreFeed(_personalizedFeed);
+      }
+      _cacheStats = await _engine.getStreamCacheStats();
+    } on YtDownloadFailure catch (e) {
+      if (seq != _personalizedSeq) return;
+      _errorMessage = e.summary;
+      _rawError = e.rawLog;
+    } catch (e, stack) {
+      if (seq != _personalizedSeq) return;
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      _rawError = '$e\n$stack';
+    } finally {
+      if (seq == _personalizedSeq) {
+        _isLoadingPersonalized = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> selectForYou() async {
+    _isPersonalizedMode = true;
+    _activeCategoryId = forYouCategoryId;
+    _activeQuery = '';
+    _errorMessage = null;
+    _rawError = null;
+    notifyListeners();
+
+    if (_personalizedFeed.isEmpty || _personalizedFeed.isColdStart) {
+      await refreshPersonalizedFeed(force: true);
+    }
   }
 
   Future<void> refreshCacheStats() async {
@@ -131,11 +303,23 @@ class ExploreProvider extends ChangeNotifier {
       _items = _items
           .map((item) => item.copyWith(cachedBytes: 0))
           .toList(growable: false);
+      _personalizedFeed = _personalizedFeed.copyWith(
+        forYou: _personalizedFeed.forYou
+            .map((item) => item.copyWith(cachedBytes: 0))
+            .toList(growable: false),
+        becauseItems: _personalizedFeed.becauseItems
+            .map((item) => item.copyWith(cachedBytes: 0))
+            .toList(growable: false),
+        discoveryItems: _personalizedFeed.discoveryItems
+            .map((item) => item.copyWith(cachedBytes: 0))
+            .toList(growable: false),
+      );
       notifyListeners();
     } catch (_) {}
   }
 
   Future<void> selectCategory(ExploreCategory category) async {
+    _isPersonalizedMode = false;
     _activeCategoryId = category.id;
     await _runSearch(
       query: category.query,
@@ -147,6 +331,7 @@ class ExploreProvider extends ChangeNotifier {
   Future<void> search(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return;
+    _isPersonalizedMode = false;
     _activeCategoryId = '';
     await _runSearch(
       query: trimmed,
@@ -193,6 +378,21 @@ class ExploreProvider extends ChangeNotifier {
     }
   }
 
+  ExploreTrackItem _applyResolvedMetadata(
+    ExploreTrackItem item,
+    String targetVideoId,
+    ResolvedStreamInfo resolved,
+  ) {
+    if (item.videoId != targetVideoId) return item;
+    return item.copyWith(
+      cachedBytes: resolved.cachedBytes,
+      resolvedMimeType: resolved.mimeType,
+      resolvedBitrateKbps: resolved.abr,
+      resolvedSampleRateHz: resolved.asr,
+      durationMs: resolved.durationMs > 0 ? resolved.durationMs : item.durationMs,
+    );
+  }
+
   /// Pre-resuelve la pista tocada en streaming y actualiza la lista para que
   /// ExoPlayer comience a reproducir de inmediato mientras cachea en disco.
   Future<List<AudioTrack>?> prepareTrackForStreaming(
@@ -211,33 +411,32 @@ class ExploreProvider extends ChangeNotifier {
         videoId: target.videoId,
       );
 
-      _items = _items.map((item) {
-        if (item.videoId != target.videoId) return item;
-        return item.copyWith(
-          cachedBytes: resolved.cachedBytes,
-          resolvedMimeType: resolved.mimeType,
-          resolvedBitrateKbps: resolved.abr,
-          resolvedSampleRateHz: resolved.asr,
-          durationMs: resolved.durationMs > 0 ? resolved.durationMs : item.durationMs,
-        );
-      }).toList(growable: false);
+      _items = _items
+          .map((item) => _applyResolvedMetadata(item, target.videoId, resolved))
+          .toList(growable: false);
 
-      final sourceItems = contextList ?? _items;
-      final queue = sourceItems.map((item) {
-        if (item.videoId == target.videoId) {
-          return item
-              .copyWith(
-                cachedBytes: resolved.cachedBytes,
-                resolvedMimeType: resolved.mimeType,
-                resolvedBitrateKbps: resolved.abr,
-                resolvedSampleRateHz: resolved.asr,
-                durationMs:
-                    resolved.durationMs > 0 ? resolved.durationMs : item.durationMs,
-              )
-              .toStreamTrack();
-        }
-        return item.toStreamTrack();
-      }).toList(growable: false);
+      _personalizedFeed = _personalizedFeed.copyWith(
+        forYou: _personalizedFeed.forYou
+            .map((item) => _applyResolvedMetadata(item, target.videoId, resolved))
+            .toList(growable: false),
+        becauseItems: _personalizedFeed.becauseItems
+            .map((item) => _applyResolvedMetadata(item, target.videoId, resolved))
+            .toList(growable: false),
+        discoveryItems: _personalizedFeed.discoveryItems
+            .map((item) => _applyResolvedMetadata(item, target.videoId, resolved))
+            .toList(growable: false),
+      );
+
+      final sourceItems = contextList ??
+          (_isPersonalizedMode && _activeQuery.isEmpty
+              ? _personalizedFeed.forYou
+              : _items);
+      final queue = sourceItems
+          .map(
+            (item) => _applyResolvedMetadata(item, target.videoId, resolved)
+                .toStreamTrack(),
+          )
+          .toList(growable: false);
 
       _cacheStats = await _engine.getStreamCacheStats();
       return queue;
@@ -255,6 +454,77 @@ class ExploreProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> handleStreamSignal(
+    AudioTrack track, {
+    bool played = false,
+    bool completed = false,
+    bool skippedEarly = false,
+  }) async {
+    final vid = track.streamVideoId;
+    if (vid.isEmpty) return;
+    try {
+      await _database.recordExploreSignal(
+        videoId: vid,
+        title: track.title,
+        artist: track.artist,
+        webpageUrl: track.effectiveSourceUrl,
+        thumbnailUrl: track.artworkPath ?? '',
+        durationMs: track.durationMs,
+        played: played,
+        completed: completed,
+        skippedEarly: skippedEarly,
+      );
+      await _recomputeLocalOrderAndFilters();
+    } catch (_) {}
+  }
+
+  Future<void> recordQueueSignal(ExploreTrackItem item) async {
+    try {
+      await _database.recordExploreSignal(
+        videoId: item.videoId,
+        title: item.title,
+        artist: item.artist,
+        webpageUrl: item.webpageUrl,
+        thumbnailUrl: item.thumbnailUrl,
+        durationMs: item.durationMs,
+        queued: true,
+      );
+      await _recomputeLocalOrderAndFilters();
+    } catch (_) {}
+  }
+
+  Future<void> recordDownloadSignal(ExploreTrackItem item) async {
+    try {
+      await _database.recordExploreSignal(
+        videoId: item.videoId,
+        title: item.title,
+        artist: item.artist,
+        webpageUrl: item.webpageUrl,
+        thumbnailUrl: item.thumbnailUrl,
+        durationMs: item.durationMs,
+        downloaded: true,
+      );
+      await _recomputeLocalOrderAndFilters();
+    } catch (_) {}
+  }
+
+  Future<void> _recomputeLocalOrderAndFilters() async {
+    final signals = await _database.getExploreSignals();
+    final seeds = await _database.getTrackYoutubeSeeds();
+    final profile = TasteProfiler.buildProfile(
+      localTracks: _library.tracks,
+      exploreSignals: signals,
+      cachedSeedVideoIds: seeds,
+      recentQueries: _recentQueries,
+    );
+    _orderedCategories = TasteProfiler.rankCategories(categories, profile);
+    if (!_personalizedFeed.isEmpty) {
+      _personalizedFeed =
+          TasteProfiler.rerankPersonalizedFeed(_personalizedFeed, profile);
+    }
+    notifyListeners();
+  }
+
   Future<void> _saveRecentQuery(String query) async {
     final cleaned = query.trim();
     if (cleaned.isEmpty) return;
@@ -267,6 +537,7 @@ class ExploreProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_prefRecentQueries, next);
+      await _recomputeLocalOrderAndFilters();
     } catch (_) {}
   }
 

@@ -32,7 +32,7 @@
 │   │       └── src/main/
 │   │           ├── AndroidManifest.xml          # Permisos (INTERNET, FOREGROUND_SERVICE_MEDIA_PLAYBACK, etc.) y extractNativeLibs=true
 │   │           ├── python/
-│   │           │   └── aura_yt_engine.py        # Orquestador Python (yt-dlp + yt-dlp-ejs + QuickJS-ng + certifi), búsqueda Explorar, resolución de streams y auto-actualizador PyPI
+│   │           │   └── aura_yt_engine.py        # Orquestador Python (yt-dlp + yt-dlp-ejs + QuickJS-ng + certifi), búsqueda Explorar, Mixes RD personalizados, resolución de streams y auto-actualizador PyPI
 │   │           ├── kotlin/com/auramusic/player/
 │   │           │   ├── MainActivity.kt          # Registra AuraAudioBridge y delega resultados de Activity
 │   │           │   ├── AuraAudioBridge.kt       # MethodChannel + EventChannel: MediaController incremental, Explorar/caché stream, limpieza física, EQ/Audio 8D, SAF, WebP y auto-actualizador yt-dlp
@@ -60,17 +60,19 @@
 │       │   │   ├── audio_engine_port.dart       # Contrato abstracto del motor (reproducción, cola incremental, DSP, Explorar/caché, SAF, WebP y yt-dlp)
 │       │   │   └── exoplayer_bridge.dart        # Implementación concreta sobre MethodChannel/EventChannel
 │       │   ├── models/
-│       │   │   └── audio_track.dart             # Modelos (AudioTrack, ExploreTrackItem, ResolvedStreamInfo, StreamCacheStats, EqualizerState, YtEngineStatus, etc.)
+│       │   │   └── audio_track.dart             # Modelos (AudioTrack, ExploreTrackItem, ExplorePersonalizedFeed, ExploreSignalRecord, ResolvedStreamInfo, StreamCacheStats, EqualizerState, YtEngineStatus, etc.)
+│       │   ├── recommendations/
+│       │   │   └── taste_profiler.dart          # Perfilador local de gustos sin servidor (decaimiento temporal ~21 d, semillas RD, reordenamiento de categorías y filtros)
 │       │   ├── storage/
-│       │   │   └── library_database.dart        # Persistencia SQLite (v2) de pistas, playlists y ediciones propias
+│       │   │   └── library_database.dart        # Persistencia SQLite (v3): tracks, playlists, explore_signals, track_youtube_seeds y explore_feed_cache
 │       │   ├── theme/
 │       │   │   └── aura_theme.dart              # Paleta "Acoustic Warmth" Claro/Oscuro (AuraPalette ThemeExtension) y tintes por semilla
 │       │   └── utils/
 │       │       └── duration_format.dart         # Formateo de duraciones (mm:ss, h:mm:ss y resúmenes)
 │       ├── state/
-│       │   ├── explore_provider.dart            # Estado de Explorar: categorías curadas, búsqueda online, historial reciente y resolución streaming
+│       │   ├── explore_provider.dart            # Estado de Explorar: feed "Para ti" sin servidor, caché 6h, categorías ordenadas por gusto, búsqueda online y resolución streaming
 │       │   ├── library_provider.dart            # Estado de catálogo, importación SAF, descargas yt-dlp, limpieza de recursos y playlists
-│       │   ├── player_provider.dart             # Estado de cola editable, buffer de streaming, DSP/Ecualizador/8D, reproducción y reanudación
+│       │   ├── player_provider.dart             # Estado de cola editable, señales implícitas de streaming, buffer, DSP/Ecualizador/8D y reanudación
 │       │   └── settings_provider.dart           # Estado de Configuración: ThemeMode persistente, versiones, caché de streaming y auto-actualizador
 │       ├── screens/
 │       │   ├── app_shell.dart                   # Contenedor con IndexedStack (Inicio, Explorar, Buscar, Biblioteca), MiniPlayer y _AuraBottomBar
@@ -79,7 +81,7 @@
 │       │   ├── home/
 │       │   │   └── home_screen.dart             # Inicio: accesos rápidos 2x2, acceso a Configuración, recién importado, álbumes y recientes
 │       │   ├── explore/
-│       │   │   └── explore_screen.dart          # Explorar: categorías curadas, búsqueda online yt-dlp, streaming progresivo en caché y descarga offline
+│       │   │   └── explore_screen.dart          # Explorar: secciones "Para ti" / "Porque escuchaste..." / "Descubre...", categorías ordenadas, búsqueda yt-dlp y streaming en caché
 │       │   ├── search/
 │       │   │   └── search_screen.dart           # Búsqueda instantánea local y filtros (Todo, Lossless, Favoritos)
 │       │   ├── library/

@@ -8,8 +8,9 @@ Reproductor de música local y descargador de audio integrado para **Android 9+ 
 
 ## Características principales
 
-- **Explorar y streaming progresivo mientras se cachea (`ExploreScreen` + `AuraStreamCache.kt`)**:
-  - Pestaña dedicada en la barra inferior (`Inicio`, `Explorar`, `Buscar`, `Biblioteca`) con categorías curadas por género/estado de ánimo, búsqueda online mediante `yt-dlp` (consultas o playlists públicas) e historial reciente guardado en `SharedPreferences`.
+- **Explorar personalizado sin servidor y streaming progresivo (`ExploreScreen` + `TasteProfiler` + `AuraStreamCache.kt`)**:
+  - Pestaña dedicada en la barra inferior (`Inicio`, `Explorar`, `Buscar`, `Biblioteca`) con vista por defecto **"Para ti"** (*Para ti*, *Porque escuchaste...* y *Descubre parecido a tu biblioteca*), además de categorías reordenadas según gustos, búsqueda online mediante `yt-dlp` (consultas o playlists públicas) e historial reciente en `SharedPreferences`.
+  - **Recomendación 100% local sin servidor (`TasteProfiler` + SQLite v3)**: Analiza reproducciones locales, favoritos, búsquedas recientes y señales implícitas de streaming (`explore_signals`: reproducción completa >70%, *skip* temprano <20 s, cola y descargas) con decaimiento temporal exponencial (~21 días) para consultar Mixes automáticos `RD<videoId>` en `yt-dlp` (`fetch_explore_recommendations`), filtrar clips no musicales / pistas ya descargadas o saltadas, y cachear el feed 6 horas en `explore_feed_cache` para apertura instantánea.
   - **Reproducción inmediata mientras se descarga en caché**: `AuraStreamCache.kt` combina `SimpleCache` (512 MB LRU en `cacheDir/aura_stream_cache`) + `CacheDataSource` + `ResolvingDataSource` de Media3 para reproducir desde los primeros fragmentos sin esperar a descargar toda la pista, conservando compatibilidad total con el Ecualizador y el Audio 8D en Rust.
   - Muestra barra de progreso de buffer en `FullPlayerScreen`, indicador `STREAM` / `CACHÉ` / `GUARDADA` y permite descargar cualquier tema a la biblioteca offline en un toque o eligiendo formato en `DownloadUrlScreen`.
 - **Importación privada sin escaneo global**: Nunca solicita `READ_EXTERNAL_STORAGE` ni `MANAGE_EXTERNAL_STORAGE`. El usuario elige explícitamente canciones o carpetas mediante SAF (`AuraSafImporter.kt`) con permisos persistentes.

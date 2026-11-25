@@ -27,10 +27,14 @@ Este documento describe las etapas de evolución de **Aura Music**, desde la bas
 
 ---
 
-## Fase 1.6 — Descubrimiento `Explorar` y streaming progresivo en caché (Completada)
+## Fase 1.6 — Descubrimiento `Explorar`, streaming en caché y recomendaciones sin servidor (Completada)
 
 - [x] **Pantalla dedicada `ExploreScreen` + `ExploreProvider`**: Categorías curadas por género/estado de ánimo, búsqueda online con `yt-dlp` (`search_explore` con `extract_flat`), soporte para enlaces de playlists públicas, historial de búsquedas recientes en `SharedPreferences` y arranque diferido hasta que el usuario abre la pestaña.
 - [x] **Streaming inmediato mientras se descarga en caché (`AuraStreamCache.kt`)**: Pipeline Media3 con `SimpleCache` (512 MB LRU en `cacheDir/aura_stream_cache`), `CacheDataSource.Factory` con clave estable por ID de video (`aura_yt_<id>`), `ResolvingDataSource.Factory` (resuelve URL temporal + `http_headers` en `Dispatchers.IO` vía `resolve_stream`) y `DefaultLoadControl` con buffer amplio (180 s) para escuchar al instante mientras se guarda en caché sin bloquear archivos locales.
+- [x] **Motor de recomendación local sin servidor (`TasteProfiler` + SQLite v3 + Mixes `RD`)**:
+  - `LibraryDatabase` v3 añade `explore_signals`, `track_youtube_seeds` (caché `trackId -> videoId` vía `ytsearch1` único) y `explore_feed_cache` (6 h para apertura instantánea).
+  - `PlayerProvider` y `ExploreScreen` registran señales implícitas locales (`completed` >70%/45 s, `skippedEarly` <20 s, cola y descargas).
+  - `TasteProfiler` pondera biblioteca + señales con decaimiento temporal exponencial (~21 días), ignora artistas genéricos, reordena categorías y alimenta `fetch_explore_recommendations` en `aura_yt_engine.py` (Mixes `RD<videoId>` con `noplaylist: False`, filtrado de duración/títulos y deduplicación) para poblar **"Para ti"**, **"Porque escuchaste..."** y **"Descubre parecido a tu biblioteca"** con *pull-to-refresh* y fallback *cold-start*.
 - [x] **Integración completa en reproductor y biblioteca**: Carátulas remotas en `ArtworkView`, indicador de buffer en `FullPlayerScreen` (`secondaryTrackValue` y estado `Buffering`), insignias `STREAM` / `CACHÉ` / `GUARDADA`, descarga directa a SQLite en un toque o por formato en `DownloadUrlScreen(initialUrl)`, compatibilidad con EQ/Audio 8D en Rust y control de limpieza de caché en `SettingsScreen`.
 
 ---

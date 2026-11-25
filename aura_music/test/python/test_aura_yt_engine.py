@@ -251,6 +251,161 @@ class TestAuraYtEngineExploreAndStream(unittest.TestCase):
         self.assertEqual(stream_res["httpHeaders"]["User-Agent"], "MockAgent/1.0")
         self.assertEqual(stream_res["expiresAtMs"], 9999999999 * 1000)
 
+    def test_recommendation_helpers_and_rd_mix_feed(self):
+        import types
+
+        self.assertTrue(aura_yt_engine.is_generic_artist_name("Artista desconocido"))
+        self.assertFalse(aura_yt_engine.is_generic_artist_name("Soda Stereo"))
+        self.assertEqual(
+            aura_yt_engine.normalize_music_title("Luna (Official Music Video) [HD]"),
+            "luna",
+        )
+        self.assertTrue(aura_yt_engine.is_reasonable_music_duration(210_000))
+        self.assertFalse(aura_yt_engine.is_reasonable_music_duration(18_000))
+        self.assertFalse(aura_yt_engine.is_reasonable_music_duration(3_600_000))
+        self.assertEqual(
+            aura_yt_engine.build_rd_mix_url("dQw4w9WgXcQ"),
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ",
+        )
+        self.assertEqual(aura_yt_engine.build_rd_mix_url("bad_id"), "")
+
+        fake_yt_dlp = types.ModuleType("yt_dlp")
+
+        class FakeMixYdl:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def extract_info(self, target, download=False):
+                if target.startswith("ytsearch1:"):
+                    return {
+                        "entries": [
+                            {
+                                "id": "seed1234567",
+                                "title": "Local Song",
+                                "artist": "Local Band",
+                                "duration": 205,
+                            }
+                        ]
+                    }
+                if "list=RDseed1234567" in target:
+                    return {
+                        "entries": [
+                            {
+                                "id": "seed1234567",
+                                "title": "Local Song",
+                                "artist": "Local Band",
+                                "duration": 205,
+                            },
+                            {
+                                "id": "skip9999999",
+                                "title": "Skipped Song",
+                                "artist": "Skip Artist",
+                                "duration": 180,
+                            },
+                            {
+                                "id": "mixtrack001",
+                                "title": "Echoes (Official Audio)",
+                                "artist": "Similar One",
+                                "duration": 220,
+                            },
+                            {
+                                "id": "podcast0001",
+                                "title": "2 Hour Podcast",
+                                "artist": "Talk Show",
+                                "duration": 7200,
+                            },
+                        ]
+                    }
+                if "list=RDstream76543" in target:
+                    return {
+                        "entries": [
+                            {
+                                "id": "mixtrack002",
+                                "title": "Warm Guitar",
+                                "artist": "Similar Two",
+                                "duration": 195,
+                            },
+                            {
+                                "id": "mixtrack001",
+                                "title": "Echoes",
+                                "artist": "Similar One",
+                                "duration": 220,
+                            },
+                        ]
+                    }
+                if "artists like" in target or "similar" in target:
+                    return {
+                        "entries": [
+                            {
+                                "id": "disc0000001",
+                                "title": "Fresh Discovery",
+                                "artist": "New Indie",
+                                "duration": 240,
+                            }
+                        ]
+                    }
+                return {
+                    "entries": [
+                        {
+                            "id": "bandhit0001",
+                            "title": "Artist Extra",
+                            "artist": "Local Band",
+                            "duration": 215,
+                        }
+                    ]
+                }
+
+        fake_yt_dlp.YoutubeDL = FakeMixYdl
+        sys.modules["yt_dlp"] = fake_yt_dlp
+
+        payload = json.dumps(
+            {
+                "seedTracks": [
+                    {
+                        "trackId": "local_1",
+                        "videoId": "",
+                        "title": "Local Song",
+                        "artist": "Local Band",
+                    },
+                    {
+                        "trackId": "yt_stream76543",
+                        "videoId": "stream76543",
+                        "title": "Stream Song",
+                        "artist": "Acoustic Hero",
+                    },
+                ],
+                "seedArtists": [
+                    {"name": "Local Band", "weight": 9.0},
+                    {"name": "Acoustic Hero", "weight": 7.0},
+                ],
+                "recentQueries": ["indie acoustic"],
+                "excludeVideoIds": ["skip9999999"],
+                "preferredDurationMs": 210000,
+            }
+        )
+
+        rec = json.loads(aura_yt_engine.fetch_explore_recommendations(payload, limit=12))
+        self.assertTrue(rec["ok"])
+        self.assertEqual(
+            rec["resolvedSeeds"],
+            [{"trackId": "local_1", "videoId": "seed1234567"}],
+        )
+        for_you_ids = [item["videoId"] for item in rec["forYou"]]
+        self.assertIn("mixtrack001", for_you_ids)
+        self.assertIn("mixtrack002", for_you_ids)
+        self.assertNotIn("skip9999999", for_you_ids)
+        self.assertNotIn("podcast0001", for_you_ids)
+        self.assertNotIn("seed1234567", for_you_ids)
+        self.assertTrue(rec["becauseLabel"].startswith("Porque escuchaste"))
+        disc_ids = [item["videoId"] for item in rec["discoveryItems"]]
+        self.assertIn("disc0000001", disc_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

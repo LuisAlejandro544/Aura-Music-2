@@ -601,6 +601,95 @@ object AuraYtDownloader {
         )
     }
 
+    private fun parseExploreItemList(
+        appContext: Context,
+        arr: org.json.JSONArray?
+    ): List<Map<String, Any?>> {
+        if (arr == null) return emptyList()
+        val items = mutableListOf<Map<String, Any?>>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val videoId = obj.optString("videoId", "")
+            if (videoId.isBlank()) continue
+            val cachedBytes = AuraStreamCache.getCachedBytes(appContext, videoId)
+            items.add(
+                mapOf(
+                    "videoId" to videoId,
+                    "title" to obj.optString("title", videoId),
+                    "artist" to obj.optString("artist", "Artista desconocido"),
+                    "album" to obj.optString("album", "Explorar Aura"),
+                    "durationMs" to obj.optLong("durationMs", 0L),
+                    "thumbnailUrl" to obj.optString("thumbnailUrl", ""),
+                    "webpageUrl" to obj.optString("webpageUrl", ""),
+                    "viewCount" to obj.optLong("viewCount", 0L),
+                    "cachedBytes" to cachedBytes,
+                )
+            )
+        }
+        return items
+    }
+
+    suspend fun fetchExploreRecommendations(
+        context: Context,
+        tastePayloadJson: String,
+        limit: Int = 16
+    ): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val quickJsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
+        val updateDir = File(appContext.filesDir, YT_UPDATES_DIR).apply {
+            if (!exists()) mkdirs()
+        }
+
+        val rawResult = engineOpMutex.withLock {
+            maybeAutoUpdateSilent(appContext)
+            try {
+                val py = ensurePythonStarted(appContext)
+                val module = py.getModule("aura_yt_engine")
+                module.callAttr(
+                    "fetch_explore_recommendations",
+                    tastePayloadJson,
+                    limit.coerceIn(6, 24),
+                    quickJsPath,
+                    updateDir.absolutePath
+                ).toString()
+            } catch (err: Throwable) {
+                throw YtDownloadDetailedException(
+                    summary = err.message ?: "Error al generar recomendaciones",
+                    rawDetail = "Stage: explore_recommendations_python\n${err.stackTraceToString()}"
+                )
+            }
+        }
+
+        val resultJson = JSONObject(rawResult)
+        if (!resultJson.optBoolean("ok", false)) {
+            val err = resultJson.optString("error", "No se pudieron obtener recomendaciones")
+            val rawErr = resultJson.optString("rawError", "").ifBlank { rawResult }
+            throw YtDownloadDetailedException(summary = err, rawDetail = rawErr)
+        }
+
+        val resolvedSeeds = mutableListOf<Map<String, String>>()
+        val seedsArr = resultJson.optJSONArray("resolvedSeeds")
+        if (seedsArr != null) {
+            for (i in 0 until seedsArr.length()) {
+                val obj = seedsArr.optJSONObject(i) ?: continue
+                val tid = obj.optString("trackId", "")
+                val vid = obj.optString("videoId", "")
+                if (tid.isNotBlank() && vid.isNotBlank()) {
+                    resolvedSeeds.add(mapOf("trackId" to tid, "videoId" to vid))
+                }
+            }
+        }
+
+        mapOf(
+            "ok" to true,
+            "forYou" to parseExploreItemList(appContext, resultJson.optJSONArray("forYou")),
+            "becauseLabel" to resultJson.optString("becauseLabel", ""),
+            "becauseItems" to parseExploreItemList(appContext, resultJson.optJSONArray("becauseItems")),
+            "discoveryItems" to parseExploreItemList(appContext, resultJson.optJSONArray("discoveryItems")),
+            "resolvedSeeds" to resolvedSeeds,
+        )
+    }
+
     suspend fun resolveAudioStream(
         context: Context,
         rawUrl: String,
