@@ -3,8 +3,9 @@
 // -----------------------------------------------------------------------------
 // - minSdk = 28 (Android 9 Pie): Media3 ExoPlayer, ImageDecoder WebP lossless,
 //   Storage Access Framework y ejecución segura desde nativeLibraryDir.
-// - Chaquopy 17.2.0 (Licencia MIT): intérprete Python 3.12 minimalista con
-//   únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`.
+// - Chaquopy 17.2.0 (Licencia MIT): intérprete Python 3.11 minimalista con
+//   únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`
+//   (Python 3.11 mantiene soporte nativo para 32 bits armeabi-v7a y 64 bits arm64-v8a).
 // - Rust (`aura_yt_engine`, MIT/Apache-2.0): compilado obligatoriamente con
 //   `cargo-ndk` para 32 bits (armeabi-v7a) y 64 bits (arm64-v8a), generando:
 //     * `libaura_yt_rust.so` (JNI: verificación de audio y tagging con Lofty)
@@ -22,7 +23,8 @@ plugins {
 }
 
 val targetPlatformProp = (
-    project.findProperty("aura-abi")
+    project.findProperty("auraAbi")
+        ?: project.findProperty("aura-abi")
         ?: project.findProperty("target-platforms")
         ?: project.findProperty("target-platform")
     )?.toString() ?: ""
@@ -101,7 +103,7 @@ android {
 
 chaquopy {
     defaultConfig {
-        version = "3.12"
+        version = "3.11"
         System.getenv("CHAQUOPY_BUILD_PYTHON")
             ?.takeIf { it.isNotBlank() }
             ?.let { buildPython(it) }

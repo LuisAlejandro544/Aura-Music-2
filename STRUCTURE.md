@@ -6,7 +6,7 @@
 /
 ├── .github/
 │   └── workflows/
-│       └── build-debug-apk.yml      # GitHub Action: configura Java 17, Python 3.12, Rust + cargo-ndk y compila APKs por ABI (arm64-v8a y armeabi-v7a)
+│       └── build-debug-apk.yml      # GitHub Action: configura Java 17, Python 3.11, Rust + cargo-ndk y compila APKs por ABI (arm64-v8a y armeabi-v7a)
 ├── aura_music/                      # Proyecto principal de la app móvil Android (Flutter + Kotlin + Rust + Chaquopy)
 │   ├── pubspec.yaml                 # Dependencias Dart/Flutter (todas con licencias permisivas MIT/BSD/Apache-2.0)
 │   ├── docs/
@@ -23,7 +23,7 @@
 │   │   ├── gradle.properties        # Memoria JVM, AndroidX y configuration-cache=false (requerido por Chaquopy)
 │   │   ├── settings.gradle.kts      # Carga del SDK Flutter, AGP, Kotlin y plugin com.chaquo.python 17.2.0
 │   │   └── app/
-│   │       ├── build.gradle.kts     # minSdk 28, targetSdk 36, Media3 ExoPlayer, Chaquopy 3.12, cargo-ndk 32/64 bits y 16KB alignment
+│   │       ├── build.gradle.kts     # minSdk 28, targetSdk 36, Media3 ExoPlayer, Chaquopy 3.11, cargo-ndk 32/64 bits y 16KB alignment
 │   │       ├── proguard-rules.pro   # Reglas R8/ProGuard para conservar Media3, Chaquopy y el puente nativo/JNI
 │   │       └── src/main/
 │   │           ├── AndroidManifest.xml          # Permisos (INTERNET, FOREGROUND_SERVICE_MEDIA_PLAYBACK, etc.) y extractNativeLibs=true

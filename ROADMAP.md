@@ -19,7 +19,7 @@ Este documento describe las etapas de evolución de **Aura Music**, desde la bas
 
 ## Fase 1.5 — Motor integrado `yt-dlp` + `yt-dlp-ejs` + Rust (`aura_yt_engine`) (Completada)
 
-- [x] **Intérprete Python 3.12 minimalista con Chaquopy 17.2.0 (MIT)**: Empaqueta únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`, sin dependencias superfluas ni licencias virales.
+- [x] **Intérprete Python 3.11 minimalista con Chaquopy 17.2.0 (MIT)**: Empaqueta únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`, sin dependencias superfluas ni licencias virales.
 - [x] **QuickJS-ng en Rust (`rquickjs` -> `libaura_qjs.so`)**: Ejecutable nativo para 32 y 64 bits en `jniLibs` que resuelve los desafíos JavaScript (`yt-dlp-ejs`) de YouTube de forma segura sin Node.js, Deno ni WebView.
 - [x] **Verificador y etiquetador nativo en Rust (`lofty` + `jni` -> `libaura_yt_rust.so`)**: Canonicalización de URLs, verificación por *magic bytes* (rechazo de payloads HTML o corruptos), inspección técnica de audio e incrustación de etiquetas/carátula sin FFmpeg GPL.
 - [x] **Pantalla dedicada `DownloadUrlScreen` y reproducción inmediata**: Selector de formato (`Auto`, `M4A/AAC`, `WebM/Opus`), barra de progreso por `EventChannel`, diagnóstico del motor nativo, almacenamiento en `filesDir/downloads/` y arranque automático en `FullPlayerScreen`.

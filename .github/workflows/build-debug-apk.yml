@@ -5,7 +5,7 @@
 #   1. Descarga todo el repositorio del proyecto.
 #   2. Detecta automáticamente si la app Flutter está en `aura_music/` o en la
 #      raíz del repositorio, además del crate Rust (`Cargo.toml`).
-#   3. Configura y cachea Java 17, Python 3.12 (Chaquopy), Android SDK/NDK 28.2,
+#   3. Configura y cachea Java 17, Python 3.11 (Chaquopy), Android SDK/NDK 28.2,
 #      Flutter SDK, Pub y Gradle 9.5.0.
 #   4. Si detecta código Rust (`Cargo.toml`), instala `libclang-dev` (bindgen),
 #      el toolchain Rust (32 bits `armv7` + 64 bits `arm64`), `cargo-ndk` y
@@ -82,11 +82,11 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      # 4. Configurar Python 3.12 para Chaquopy (yt-dlp + yt-dlp-ejs + certifi)
-      - name: Configurar Python 3.12 (Chaquopy)
+      # 4. Configurar Python 3.11 para Chaquopy (soporta 32 bits armeabi-v7a + 64 bits arm64-v8a y yt-dlp)
+      - name: Configurar Python 3.11 (Chaquopy)
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Exportar ruta de Python para Chaquopy
         shell: bash
@@ -209,14 +209,14 @@ jobs:
         working-directory: ${{ steps.detect.outputs.app_dir }}
         shell: bash
         run: |
-          flutter build apk --debug --target-platform android-arm64
+          ORG_GRADLE_PROJECT_auraAbi=arm64-v8a flutter build apk --debug --target-platform android-arm64
           cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
 
       - name: Compilar APK Debug 32 bits (armeabi-v7a)
         working-directory: ${{ steps.detect.outputs.app_dir }}
         shell: bash
         run: |
-          flutter build apk --debug --target-platform android-arm
+          ORG_GRADLE_PROJECT_auraAbi=armeabi-v7a flutter build apk --debug --target-platform android-arm
           cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
           ls -lh build/app/outputs/flutter-apk/
 

@@ -1,6 +1,6 @@
 # Aura Music
 
-Reproductor de música local y descargador de audio integrado para **Android 9+ (`minSdk = 28`)** construido con **Flutter + Dart**, motor nativo **Media3 ExoPlayer** en Kotlin, intérprete **Python 3.12 minimalista (Chaquopy)** con `yt-dlp` + `yt-dlp-ejs` + `certifi`, y motor nativo en **Rust (`aura_yt_engine`)** con **QuickJS-ng (`rquickjs`)** y **Lofty**, diseñado con estética cálida (*Acoustic Warmth*).
+Reproductor de música local y descargador de audio integrado para **Android 9+ (`minSdk = 28`)** construido con **Flutter + Dart**, motor nativo **Media3 ExoPlayer** en Kotlin, intérprete **Python 3.11 minimalista (Chaquopy)** con `yt-dlp` + `yt-dlp-ejs` + `certifi`, y motor nativo en **Rust (`aura_yt_engine`)** con **QuickJS-ng (`rquickjs`)** y **Lofty**, diseñado con estética cálida (*Acoustic Warmth*).
 
 > **Nota sobre la estructura del repositorio:** La aplicación móvil real vive dentro de `aura_music/`. La raíz del repositorio contiene un wrapper web mínimo en React/Vite (`src/`) usado únicamente como vista de entorno web, además del workflow de compilación en `.github/workflows/build-debug-apk.yml`.
 
@@ -11,7 +11,7 @@ Reproductor de música local y descargador de audio integrado para **Android 9+ 
 - **Importación privada sin escaneo global**: Nunca solicita `READ_EXTERNAL_STORAGE` ni `MANAGE_EXTERNAL_STORAGE`. El usuario elige explícitamente canciones o carpetas mediante SAF (`AuraSafImporter.kt`) con permisos persistentes.
 - **Descarga de audio desde URL (`DownloadUrlScreen` + `yt-dlp` + Rust)**:
   - Accesible desde el botón `+` (`ImportSourceSheet` -> *Descargar desde URL (yt-dlp)*).
-  - Intérprete **Python 3.12 minimalista** embebido con **Chaquopy 17.2.0** (MIT), instalando únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`.
+  - Intérprete **Python 3.11 minimalista** embebido con **Chaquopy 17.2.0** (MIT), instalando únicamente `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps` y `certifi`.
   - **QuickJS-ng en Rust (`rquickjs` -> `libaura_qjs.so`)**: Ejecutable nativo para 32 y 64 bits empaquetado en `jniLibs` que resuelve los retos JS de `yt-dlp-ejs` sin necesidad de Node.js, Deno ni WebView.
   - **Validación y etiquetado nativo en Rust (`lofty` -> `libaura_yt_rust.so`)**: Canonicaliza URLs, verifica magic bytes del contenedor descargado (rechaza respuestas HTML/corruptas), extrae propiedades técnicas e incrusta metadatos y carátula WebP sin depender de FFmpeg GPL.
   - Al finalizar, registra la pista en SQLite (`filesDir/downloads/`) y la reproduce automáticamente en `FullPlayerScreen`.
@@ -29,7 +29,7 @@ Reproductor de música local y descargador de audio integrado para **Android 9+ 
 ### Para compilar la app móvil (`aura_music/`)
 - **Flutter SDK** (canal `stable`, Dart `>=3.4.0 <4.0.0`)
 - **Java 17** (Temurin / OpenJDK)
-- **Python 3.12** en el host de compilación (requerido por Chaquopy)
+- **Python 3.11** en el host de compilación (requerido por Chaquopy)
 - **Rust Toolchain** (`aarch64-linux-android`, `armv7-linux-androideabi`), **`cargo-ndk`** y **`libclang-dev`** (requerido por `rquickjs` bindgen)
 - **Android SDK** (`compileSdk = 36`, `minSdk = 28`, NDK `28.2.13676358`)
 
@@ -41,7 +41,7 @@ Reproductor de música local y descargador de audio integrado para **Android 9+ 
 ## Compilación y uso
 
 ### 1. Compilar APKs desde GitHub Actions (sin PC)
-El workflow `.github/workflows/build-debug-apk.yml` configura Java 17, Python 3.12, `libclang-dev`, Rust (`aarch64` + `armv7`), `cargo-ndk`, Android SDK/NDK 28.2 y Flutter, y genera **dos artifacts independientes**:
+El workflow `.github/workflows/build-debug-apk.yml` configura Java 17, Python 3.11, `libclang-dev`, Rust (`aarch64` + `armv7`), `cargo-ndk`, Android SDK/NDK 28.2 y Flutter, y genera **dos artifacts independientes**:
 - `aura-music-debug-arm64-v8a` (`app-arm64-v8a-debug.apk`, 64 bits)
 - `aura-music-debug-armeabi-v7a` (`app-armeabi-v7a-debug.apk`, 32 bits)
 

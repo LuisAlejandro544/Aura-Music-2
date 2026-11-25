@@ -34,7 +34,7 @@ Aura Music ya integra Rust en producción mediante el crate `aura_yt_engine` (li
 
 ### Orquestación mínima en Python (`Chaquopy 17.2.0`)
 - **Archivo**: `aura_music/android/app/src/main/python/aura_yt_engine.py`.
-- **Dependencias exactas**: `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps`, `certifi` sobre Python `3.12`.
+- **Dependencias exactas**: `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps`, `certifi` sobre Python `3.11`.
 - Selecciona flujos directos de audio (`m4a`/`opus`/`best`) reproducibles por Media3 ExoPlayer sin transcodificación FFmpeg y usa `js_runtimes={'quickjs': {'path': quickjs_path}}`.
 - Todo el flujo se ejecuta en `Dispatchers.IO` dentro de `AuraYtDownloader.kt`, reportando progreso por `EventChannel` a `DownloadUrlScreen`.
 
