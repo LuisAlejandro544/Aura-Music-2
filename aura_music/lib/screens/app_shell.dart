@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 import '../core/theme/aura_theme.dart';
 import '../widgets/mini_player.dart';
+import 'explore/explore_screen.dart';
 import 'home/home_screen.dart';
 import 'library/library_screen.dart';
 import 'player/full_player_screen.dart';
@@ -53,7 +54,7 @@ class _AppShellState extends State<AppShell> {
   void _jumpToLibrarySubTab(int subTab) {
     setState(() {
       _librarySubTab = subTab;
-      _currentTab = 2;
+      _currentTab = 3;
     });
   }
 
@@ -68,6 +69,7 @@ class _AppShellState extends State<AppShell> {
             index: _currentTab,
             children: [
               HomeScreen(onNavigateToLibraryTab: _jumpToLibrarySubTab),
+              ExploreScreen(isActive: _currentTab == 1),
               const SearchScreen(),
               LibraryScreen(initialSubTab: _librarySubTab),
             ],
@@ -131,18 +133,25 @@ class _AuraBottomBar extends StatelessWidget {
                 onTap: () => onDestinationSelected(0),
               ),
               _AuraNavItem(
+                icon: Icons.explore_outlined,
+                selectedIcon: Icons.explore_rounded,
+                label: 'Explorar',
+                selected: selectedIndex == 1,
+                onTap: () => onDestinationSelected(1),
+              ),
+              _AuraNavItem(
                 icon: Icons.search_rounded,
                 selectedIcon: Icons.search_rounded,
                 label: 'Buscar',
-                selected: selectedIndex == 1,
-                onTap: () => onDestinationSelected(1),
+                selected: selectedIndex == 2,
+                onTap: () => onDestinationSelected(2),
               ),
               _AuraNavItem(
                 icon: Icons.library_music_outlined,
                 selectedIcon: Icons.library_music_rounded,
                 label: 'Biblioteca',
-                selected: selectedIndex == 2,
-                onTap: () => onDestinationSelected(2),
+                selected: selectedIndex == 3,
+                onTap: () => onDestinationSelected(3),
               ),
             ],
           ),
@@ -181,7 +190,7 @@ class _AuraNavItem extends StatelessWidget {
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
-              width: 60,
+              width: 54,
               height: 30,
               decoration: BoxDecoration(
                 color: selected ? c.accentSoft : Colors.transparent,

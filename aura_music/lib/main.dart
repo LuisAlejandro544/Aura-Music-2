@@ -19,6 +19,7 @@ import 'core/storage/library_database.dart';
 import 'core/theme/aura_theme.dart';
 import 'screens/app_shell.dart';
 import 'screens/permissions/permissions_screen.dart';
+import 'state/explore_provider.dart';
 import 'state/library_provider.dart';
 import 'state/player_provider.dart';
 import 'state/settings_provider.dart';
@@ -31,12 +32,14 @@ void main() {
   final libraryProvider = LibraryProvider(engine: engine, database: database);
   final playerProvider = PlayerProvider(engine: engine, library: libraryProvider);
   final settingsProvider = SettingsProvider(engine: engine);
+  final exploreProvider = ExploreProvider(engine: engine);
 
   runApp(
     AuraMusicApp(
       libraryProvider: libraryProvider,
       playerProvider: playerProvider,
       settingsProvider: settingsProvider,
+      exploreProvider: exploreProvider,
     ),
   );
 }
@@ -47,11 +50,13 @@ class AuraMusicApp extends StatefulWidget {
     required this.libraryProvider,
     required this.playerProvider,
     required this.settingsProvider,
+    required this.exploreProvider,
   });
 
   final LibraryProvider libraryProvider;
   final PlayerProvider playerProvider;
   final SettingsProvider settingsProvider;
+  final ExploreProvider exploreProvider;
 
   @override
   State<AuraMusicApp> createState() => _AuraMusicAppState();
@@ -99,6 +104,9 @@ class _AuraMusicAppState extends State<AuraMusicApp> {
         ),
         ChangeNotifierProvider<SettingsProvider>.value(
           value: widget.settingsProvider,
+        ),
+        ChangeNotifierProvider<ExploreProvider>.value(
+          value: widget.exploreProvider,
         ),
       ],
       child: Consumer<SettingsProvider>(

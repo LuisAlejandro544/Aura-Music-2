@@ -26,6 +26,8 @@ class ExoPlayerBridge implements AudioEnginePort {
       StreamController<DownloadProgressEvent>.broadcast();
   final StreamController<YtUpdateProgressEvent> _ytUpdateProgressController =
       StreamController<YtUpdateProgressEvent>.broadcast();
+  final StreamController<Spatial8dState> _spatial8dController =
+      StreamController<Spatial8dState>.broadcast();
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
 
@@ -49,6 +51,9 @@ class ExoPlayerBridge implements AudioEnginePort {
   @override
   Stream<YtUpdateProgressEvent> get ytUpdateProgressEvents =>
       _ytUpdateProgressController.stream;
+
+  @override
+  Stream<Spatial8dState> get spatial8dEvents => _spatial8dController.stream;
 
   @override
   Stream<String> get errorEvents => _errorController.stream;
@@ -88,9 +93,12 @@ class ExoPlayerBridge implements AudioEnginePort {
         _playbackController.add(
           NativePlaybackEvent(
             isPlaying: map['isPlaying'] == true,
+            isBuffering: map['isBuffering'] == true,
             currentIndex: (map['currentIndex'] as num?)?.toInt() ?? 0,
             currentMediaId: map['currentMediaId'] as String?,
             positionMs: (map['positionMs'] as num?)?.toInt() ?? 0,
+            bufferedPositionMs:
+                (map['bufferedPositionMs'] as num?)?.toInt() ?? 0,
             durationMs: (map['durationMs'] as num?)?.toInt() ?? 0,
             shuffleEnabled: map['shuffleEnabled'] == true,
             repeatMode: repeatMode,
@@ -122,6 +130,8 @@ class ExoPlayerBridge implements AudioEnginePort {
             message: (map['message'] ?? '').toString(),
           ),
         );
+      case 'spatial8dState':
+        _spatial8dController.add(Spatial8dState.fromMap(map));
       case 'error':
         _errorController.add(
           (map['message'] as String?) ?? 'Error desconocido en ExoPlayer',
@@ -194,6 +204,110 @@ class ExoPlayerBridge implements AudioEnginePort {
             ? rawDetails
             : 'Code: ${e.code}\nMessage: $summary',
       );
+    }
+  }
+
+  @override
+  Future<ExploreSearchResult> searchExplore({
+    required String query,
+    int limit = 18,
+  }) async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'searchExplore',
+        {
+          'query': query,
+          'limit': limit,
+        },
+      );
+      final map = raw ?? const <String, dynamic>{};
+      final rawItems = map['items'];
+      final items = rawItems is List
+          ? rawItems
+              .whereType<Map<dynamic, dynamic>>()
+              .map((item) => ExploreTrackItem.fromMap(
+                    Map<String, dynamic>.from(item),
+                  ))
+              .where((item) => item.videoId.isNotEmpty)
+              .toList()
+          : const <ExploreTrackItem>[];
+      return ExploreSearchResult(
+        query: (map['query'] ?? query).toString(),
+        items: items,
+      );
+    } on PlatformException catch (e) {
+      final summary = (e.message ?? '').trim().isNotEmpty
+          ? e.message!.trim()
+          : 'Error al explorar música (${e.code})';
+      final rawDetails = (e.details?.toString() ?? '').trim();
+      throw YtDownloadFailure(
+        summary: summary,
+        rawLog: rawDetails.isNotEmpty
+            ? rawDetails
+            : 'Code: ${e.code}\nMessage: $summary',
+      );
+    } on MissingPluginException {
+      return ExploreSearchResult(query: query, items: const []);
+    }
+  }
+
+  @override
+  Future<ResolvedStreamInfo> resolveExploreStream({
+    required String url,
+    String videoId = '',
+    YtDownloadFormat format = YtDownloadFormat.best,
+  }) async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'resolveExploreStream',
+        {
+          'url': url,
+          'videoId': videoId,
+          'format': format.name,
+        },
+      );
+      if (raw == null || raw.isEmpty) {
+        throw const YtDownloadFailure(
+          summary: 'No se recibió flujo de audio desde yt-dlp',
+          rawLog: 'MethodChannel resolveExploreStream devolvió null o vacío.',
+        );
+      }
+      return ResolvedStreamInfo.fromMap(raw);
+    } on PlatformException catch (e) {
+      final summary = (e.message ?? '').trim().isNotEmpty
+          ? e.message!.trim()
+          : 'No se pudo conectar el streaming (${e.code})';
+      final rawDetails = (e.details?.toString() ?? '').trim();
+      throw YtDownloadFailure(
+        summary: summary,
+        rawLog: rawDetails.isNotEmpty
+            ? rawDetails
+            : 'Code: ${e.code}\nMessage: $summary',
+      );
+    }
+  }
+
+  @override
+  Future<StreamCacheStats> getStreamCacheStats() async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'getStreamCacheStats',
+      );
+      return StreamCacheStats.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return const StreamCacheStats();
+    }
+  }
+
+  @override
+  Future<StreamCacheStats> clearStreamCache() async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'clearStreamCache',
+      );
+      return StreamCacheStats.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return const StreamCacheStats();
     }
   }
 
@@ -371,6 +485,36 @@ class ExoPlayerBridge implements AudioEnginePort {
   }
 
   @override
+  Future<Spatial8dState> getSpatial8dState() async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'getSpatial8dState',
+      );
+      return Spatial8dState.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return const Spatial8dState();
+    }
+  }
+
+  @override
+  Future<Spatial8dState> updateSpatial8dState(Spatial8dState state) async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'updateSpatial8dState',
+        {
+          'enabled': state.enabled,
+          'mode': state.modeWireValue,
+          'speedHz': state.speedHz,
+          'intensity': state.intensity,
+        },
+      );
+      return Spatial8dState.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return state;
+    }
+  }
+
+  @override
   Future<LosslessWebpResult> convertImageToLosslessWebp({
     required String sourcePath,
     required String trackId,
@@ -456,6 +600,7 @@ class ExoPlayerBridge implements AudioEnginePort {
     _importController.close();
     _downloadProgressController.close();
     _ytUpdateProgressController.close();
+    _spatial8dController.close();
     _errorController.close();
   }
 }

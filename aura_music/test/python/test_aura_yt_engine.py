@@ -137,5 +137,120 @@ class TestAuraYtEngineUpdater(unittest.TestCase):
                 )
 
 
+class TestAuraYtEngineExploreAndStream(unittest.TestCase):
+    def setUp(self):
+        self._orig_sys_path = list(sys.path)
+        aura_yt_engine._purge_module_from_sys_modules("yt_dlp")
+
+    def tearDown(self):
+        aura_yt_engine._purge_module_from_sys_modules("yt_dlp")
+        sys.path[:] = self._orig_sys_path
+
+    def test_normalize_explore_target_and_parse_entries(self):
+        target, is_url = aura_yt_engine._normalize_explore_target("lofi beats", limit=12)
+        self.assertEqual(target, "ytsearch12:lofi beats")
+        self.assertFalse(is_url)
+
+        url_target, is_url_flag = aura_yt_engine._normalize_explore_target(
+            "https://www.youtube.com/playlist?list=PL123", limit=20
+        )
+        self.assertEqual(url_target, "https://www.youtube.com/playlist?list=PL123")
+        self.assertTrue(is_url_flag)
+
+        parsed = aura_yt_engine._parse_explore_entry(
+            {
+                "id": "dQw4w9WgXcQ",
+                "title": "Test Track",
+                "uploader": "Aura Artist",
+                "duration": 185.5,
+                "view_count": 4200,
+            }
+        )
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["videoId"], "dQw4w9WgXcQ")
+        self.assertEqual(parsed["durationMs"], 185500)
+        self.assertEqual(
+            parsed["webpageUrl"], "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        self.assertIn("hqdefault.jpg", parsed["thumbnailUrl"])
+
+        self.assertIsNone(
+            aura_yt_engine._parse_explore_entry(
+                {"id": "priv1234567", "title": "[Private video]"}
+            )
+        )
+        self.assertIsNone(
+            aura_yt_engine._parse_explore_entry(
+                {"id": "live1234567", "title": "Radio 24/7", "is_live": True, "live_status": "is_live"}
+            )
+        )
+
+    def test_search_explore_and_resolve_stream_with_mocked_yt_dlp(self):
+        import types
+
+        fake_yt_dlp = types.ModuleType("yt_dlp")
+
+        class FakeYoutubeDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def extract_info(self, target, download=True):
+                self.opts["logger"].debug("Solving JS challenges with quickjs")
+                if target.startswith("ytsearch"):
+                    return {
+                        "entries": [
+                            {
+                                "id": "abc12345678",
+                                "title": "Acoustic Horizon",
+                                "artist": "Aura Trio",
+                                "duration": 210,
+                                "thumbnail": "https://i.ytimg.com/vi/abc12345678/hqdefault.jpg",
+                            },
+                            {
+                                "id": "abc12345678",
+                                "title": "Duplicate entry",
+                            },
+                            {
+                                "id": "dead0000001",
+                                "title": "[Deleted video]",
+                            },
+                        ]
+                    }
+                return {
+                    "id": "abc12345678",
+                    "title": "Acoustic Horizon",
+                    "artist": "Aura Trio",
+                    "duration": 210,
+                    "ext": "m4a",
+                    "abr": 128,
+                    "asr": 44100,
+                    "url": "https://cdn.example.test/audio.m4a?expire=9999999999",
+                    "http_headers": {"User-Agent": "MockAgent/1.0"},
+                    "webpage_url": target,
+                }
+
+        fake_yt_dlp.YoutubeDL = FakeYoutubeDL
+        sys.modules["yt_dlp"] = fake_yt_dlp
+
+        search_res = json.loads(aura_yt_engine.search_explore("acoustic horizon", limit=10))
+        self.assertTrue(search_res["ok"])
+        self.assertEqual(len(search_res["items"]), 1)
+        self.assertEqual(search_res["items"][0]["videoId"], "abc12345678")
+
+        stream_res = json.loads(
+            aura_yt_engine.resolve_stream("https://www.youtube.com/watch?v=abc12345678")
+        )
+        self.assertTrue(stream_res["ok"])
+        self.assertEqual(stream_res["mimeType"], "audio/mp4")
+        self.assertEqual(stream_res["httpHeaders"]["User-Agent"], "MockAgent/1.0")
+        self.assertEqual(stream_res["expiresAtMs"], 9999999999 * 1000)
+
+
 if __name__ == "__main__":
     unittest.main()

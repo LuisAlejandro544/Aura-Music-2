@@ -36,6 +36,8 @@ class SettingsProvider extends ChangeNotifier {
 
   YtEngineStatus? _engineStatus;
   EqualizerState? _equalizerState;
+  Spatial8dState? _spatial8dState;
+  StreamCacheStats _streamCacheStats = const StreamCacheStats();
   YtUpdateCheckResult? _lastCheckResult;
   YtUpdateProgressEvent? _updateProgress;
 
@@ -43,6 +45,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _isCheckingUpdates = false;
   bool _isUpdatingEngine = false;
   bool _isRestoringEngine = false;
+  bool _isClearingStreamCache = false;
 
   String? _statusMessage;
   String? _errorMessage;
@@ -51,6 +54,8 @@ class SettingsProvider extends ChangeNotifier {
   bool get themeHydrated => _themeHydrated;
   YtEngineStatus? get engineStatus => _engineStatus;
   EqualizerState? get equalizerState => _equalizerState;
+  Spatial8dState? get spatial8dState => _spatial8dState;
+  StreamCacheStats get streamCacheStats => _streamCacheStats;
   YtUpdateCheckResult? get lastCheckResult => _lastCheckResult;
   YtUpdateProgressEvent? get updateProgress => _updateProgress;
 
@@ -58,11 +63,13 @@ class SettingsProvider extends ChangeNotifier {
   bool get isCheckingUpdates => _isCheckingUpdates;
   bool get isUpdatingEngine => _isUpdatingEngine;
   bool get isRestoringEngine => _isRestoringEngine;
+  bool get isClearingStreamCache => _isClearingStreamCache;
   bool get isBusy =>
       _isLoadingStatus ||
       _isCheckingUpdates ||
       _isUpdatingEngine ||
-      _isRestoringEngine;
+      _isRestoringEngine ||
+      _isClearingStreamCache;
 
   String? get statusMessage => _statusMessage;
   String? get errorMessage => _errorMessage;
@@ -111,13 +118,33 @@ class SettingsProvider extends ChangeNotifier {
       final results = await Future.wait<dynamic>([
         _engine.getYtEngineStatus(includePython: includePython),
         _engine.getEqualizerState(),
+        _engine.getSpatial8dState(),
+        _engine.getStreamCacheStats(),
       ]);
       _engineStatus = results[0] as YtEngineStatus;
       _equalizerState = results[1] as EqualizerState;
+      _spatial8dState = results[2] as Spatial8dState;
+      _streamCacheStats = results[3] as StreamCacheStats;
     } catch (err) {
       _errorMessage = 'No se pudo consultar el estado del motor: $err';
     } finally {
       _isLoadingStatus = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearStreamCache() async {
+    if (isBusy) return;
+    _isClearingStreamCache = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _streamCacheStats = await _engine.clearStreamCache();
+      _statusMessage = 'Caché de streaming vaciada correctamente.';
+    } catch (err) {
+      _errorMessage = 'No se pudo limpiar la caché de streaming: $err';
+    } finally {
+      _isClearingStreamCache = false;
       notifyListeners();
     }
   }

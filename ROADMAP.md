@@ -7,7 +7,7 @@ Este documento describe las etapas de evolución de **Aura Music**, desde la bas
 ## Fase 1 — Base funcional y experiencia local (Completada)
 
 - [x] **Diseño *Acoustic Warmth* en modo claro** (`#F9F6F0`, `#F0EBE1`, `#2C2524`, `#D96B43`, `#E5A93B`, `#3B8A6E`).
-- [x] **Navegación multipantalla modular**: `Inicio`, `Buscar`, `Biblioteca` (Canciones, Álbumes, Carpetas, Playlists), `CollectionDetailScreen`, `FullPlayerScreen`, `MiniPlayer` con gestos y hojas modales (`ImportSourceSheet`, `QueueSheet`, `TrackOptionsSheet`).
+- [x] **Navegación multipantalla modular**: `Inicio`, `Explorar`, `Buscar`, `Biblioteca` (Canciones, Álbumes, Carpetas, Playlists), `CollectionDetailScreen`, `FullPlayerScreen`, `MiniPlayer` con gestos y hojas modales (`ImportSourceSheet`, `QueueSheet`, `TrackOptionsSheet`).
 - [x] **Motor de reproducción nativo**: `AuraPlaybackService.kt` con `Media3 ExoPlayer` + `MediaSessionService`, Audio Focus, pausa al desconectar auriculares y controles en notificación/pantalla bloqueada.
 - [x] **Importación privada vía SAF (`AuraSafImporter.kt`)**: Selección explícita de archivos/carpetas con `takePersistableUriPermission` y extracción paralela de metadatos en `Dispatchers.IO`.
 - [x] **Persistencia rápida en SQLite (`LibraryDatabase` v2)**: Arranque inmediato con hidratación posterior al primer frame.
@@ -24,6 +24,14 @@ Este documento describe las etapas de evolución de **Aura Music**, desde la bas
 - [x] **Verificador y etiquetador nativo en Rust (`lofty` + `jni` -> `libaura_yt_rust.so`)**: Canonicalización de URLs, verificación por *magic bytes* (rechazo de payloads HTML o corruptos), inspección técnica de audio e incrustación de etiquetas/carátula sin FFmpeg GPL.
 - [x] **Pantalla dedicada `DownloadUrlScreen` y reproducción inmediata**: Selector de formato (`Auto`, `M4A/AAC`, `WebM/Opus`), barra de progreso por `EventChannel`, diagnóstico del motor nativo, almacenamiento en `filesDir/aura_downloads/` (con limpieza física automática al eliminar la pista) y arranque automático en `FullPlayerScreen`.
 - [x] **Integración Gradle + CI con `cargo-ndk`**: Compilación obligatoria de Rust para `armeabi-v7a` y `arm64-v8a` con soporte de páginas de memoria 16 KB (`-Wl,-z,max-page-size=16384`).
+
+---
+
+## Fase 1.6 — Descubrimiento `Explorar` y streaming progresivo en caché (Completada)
+
+- [x] **Pantalla dedicada `ExploreScreen` + `ExploreProvider`**: Categorías curadas por género/estado de ánimo, búsqueda online con `yt-dlp` (`search_explore` con `extract_flat`), soporte para enlaces de playlists públicas, historial de búsquedas recientes en `SharedPreferences` y arranque diferido hasta que el usuario abre la pestaña.
+- [x] **Streaming inmediato mientras se descarga en caché (`AuraStreamCache.kt`)**: Pipeline Media3 con `SimpleCache` (512 MB LRU en `cacheDir/aura_stream_cache`), `CacheDataSource.Factory` con clave estable por ID de video (`aura_yt_<id>`), `ResolvingDataSource.Factory` (resuelve URL temporal + `http_headers` en `Dispatchers.IO` vía `resolve_stream`) y `DefaultLoadControl` con buffer amplio (180 s) para escuchar al instante mientras se guarda en caché sin bloquear archivos locales.
+- [x] **Integración completa en reproductor y biblioteca**: Carátulas remotas en `ArtworkView`, indicador de buffer en `FullPlayerScreen` (`secondaryTrackValue` y estado `Buffering`), insignias `STREAM` / `CACHÉ` / `GUARDADA`, descarga directa a SQLite en un toque o por formato en `DownloadUrlScreen(initialUrl)`, compatibilidad con EQ/Audio 8D en Rust y control de limpieza de caché en `SettingsScreen`.
 
 ---
 
@@ -47,5 +55,7 @@ Este documento describe las etapas de evolución de **Aura Music**, desde la bas
 
 - [x] **Expansión DSP en `aura_music/rust/aura_dsp` (`libaura_dsp.so`)**: Implementación en Rust con licencias permisivas (`MIT OR Apache-2.0`), compilada en 32 y 64 bits vía `cargo-ndk`.
 - [x] **Ecualizador paramétrico Biquad multibanda + Preamp + Limitador suave**: Procesamiento PCM en tiempo real (`16-bit` y `float32` por `DirectByteBuffer`) mediante `AuraRustDspProcessor` en `DefaultAudioSink` de Media3, con pantalla dedicada entendible (`EqualizerScreen`), perfiles rápidos y persistencia local.
+- [x] **Audio 8D orbital nativo (`Spatial8dScreen`) sin reverb**: Procesador dual en `aura_dsp` con detección automática de salida (`AudioDeviceCallback`): modo binaural para **auriculares** (paneo orbital, ITD y sombra craneal) y modo **altavoz mono-safe** sin cancelación de fase para escuchar sin auriculares, con velocidad e intensidad configurables e interfaz estática sin íconos 3D animados.
+- [ ] **Reverb espacial opcional para Audio 8D**: Añadir en el futuro algoritmo de sala/reverb ligero en `aura_dsp` como capa opcional.
 - [ ] **Normalización ReplayGain / LUFS**: Cálculo y aplicación de ganancia sin distorsión ni clipping.
 - [ ] **Análisis espectral FFT en vivo**: Datos de espectro de baja latencia para visualizador reactivo en `FullPlayerScreen`.

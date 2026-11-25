@@ -21,6 +21,10 @@ class PlayerProvider extends ChangeNotifier {
   })  : _engine = engine,
         _library = library {
     _playbackSub = _engine.playbackEvents.listen(_onNativePlaybackEvent);
+    _spatial8dSub = _engine.spatial8dEvents.listen((event) {
+      _spatial8d = event;
+      notifyListeners();
+    });
     _errorSub = _engine.errorEvents.listen((msg) {
       _errorMessage = msg;
       notifyListeners();
@@ -31,19 +35,24 @@ class PlayerProvider extends ChangeNotifier {
   final LibraryProvider _library;
 
   StreamSubscription<NativePlaybackEvent>? _playbackSub;
+  StreamSubscription<Spatial8dState>? _spatial8dSub;
   StreamSubscription<String>? _errorSub;
 
   List<AudioTrack> _queue = [];
   int _currentIndex = 0;
   bool _isPlaying = false;
+  bool _isBuffering = false;
   bool _shuffleEnabled = false;
   AuraRepeatMode _repeatMode = AuraRepeatMode.off;
   Duration _position = Duration.zero;
+  Duration _bufferedPosition = Duration.zero;
   Duration _duration = Duration.zero;
   String? _errorMessage;
   bool _isScrubbing = false;
   EqualizerState _equalizer = const EqualizerState();
   int _eqMutationSeq = 0;
+  Spatial8dState _spatial8d = const Spatial8dState();
+  int _spatial8dMutationSeq = 0;
 
   List<AudioTrack> get queue => List.unmodifiable(_queue);
   int get currentIndex => _currentIndex;
@@ -55,14 +64,17 @@ class PlayerProvider extends ChangeNotifier {
 
   bool get hasActiveTrack => currentTrack != null;
   bool get isPlaying => _isPlaying;
+  bool get isBuffering => _isBuffering;
   bool get shuffleEnabled => _shuffleEnabled;
   AuraRepeatMode get repeatMode => _repeatMode;
   Duration get position => _position;
+  Duration get bufferedPosition => _bufferedPosition;
   Duration get duration =>
       _duration.inMilliseconds > 0 ? _duration : (currentTrack?.duration ?? Duration.zero);
   String? get errorMessage => _errorMessage;
   AudioEngineBackend get activeBackend => _engine.activeBackend;
   EqualizerState get equalizer => _equalizer;
+  Spatial8dState get spatial8d => _spatial8d;
 
   double get progress {
     final totalMs = duration.inMilliseconds;
@@ -70,10 +82,17 @@ class PlayerProvider extends ChangeNotifier {
     return (_position.inMilliseconds / totalMs).clamp(0.0, 1.0);
   }
 
+  double get bufferedProgress {
+    final totalMs = duration.inMilliseconds;
+    if (totalMs <= 0) return 0.0;
+    return (_bufferedPosition.inMilliseconds / totalMs).clamp(0.0, 1.0);
+  }
+
   /// Inicializa el motor de audio de forma diferida sin bloquear el arranque.
   Future<void> initializeEngineDeferred() async {
     await _engine.initialize();
     _equalizer = await _engine.getEqualizerState();
+    _spatial8d = await _engine.getSpatial8dState();
     notifyListeners();
     await _restoreLastSessionIfAvailable();
   }
@@ -109,6 +128,7 @@ class PlayerProvider extends ChangeNotifier {
   void _onNativePlaybackEvent(NativePlaybackEvent event) {
     final previousTrackId = currentTrack?.id;
     _isPlaying = event.isPlaying;
+    _isBuffering = event.isBuffering;
     _shuffleEnabled = event.shuffleEnabled;
     _repeatMode = event.repeatMode;
 
@@ -124,14 +144,17 @@ class PlayerProvider extends ChangeNotifier {
     if (!_isScrubbing) {
       _position = Duration(milliseconds: event.positionMs);
     }
+    _bufferedPosition = Duration(milliseconds: event.bufferedPositionMs);
     if (event.durationMs > 0) {
       _duration = Duration(milliseconds: event.durationMs);
     }
 
     final newTrack = currentTrack;
     if (newTrack != null && newTrack.id != previousTrackId) {
-      _library.markPlayed(newTrack.id);
-      _persistLastSession(newTrack.id, event.positionMs);
+      if (!newTrack.isStreamTrack) {
+        _library.markPlayed(newTrack.id);
+        _persistLastSession(newTrack.id, event.positionMs);
+      }
     }
 
     notifyListeners();
@@ -143,14 +166,18 @@ class PlayerProvider extends ChangeNotifier {
     _queue = List<AudioTrack>.from(tracks);
     _currentIndex = clampedIndex;
     _position = Duration.zero;
+    _bufferedPosition = Duration.zero;
     _duration = _queue[clampedIndex].duration;
     _isPlaying = true;
+    _isBuffering = _queue[clampedIndex].isStreamTrack;
     _errorMessage = null;
     notifyListeners();
 
     final target = _queue[clampedIndex];
-    _library.markPlayed(target.id);
-    _persistLastSession(target.id, 0);
+    if (!target.isStreamTrack) {
+      _library.markPlayed(target.id);
+      _persistLastSession(target.id, 0);
+    }
 
     await _engine.setQueueAndPlay(
       tracks: _queue,
@@ -191,8 +218,10 @@ class PlayerProvider extends ChangeNotifier {
     if (index < 0 || index >= _queue.length) return;
     _currentIndex = index;
     _position = Duration.zero;
+    _bufferedPosition = Duration.zero;
     _duration = _queue[index].duration;
     _isPlaying = true;
+    _isBuffering = _queue[index].isStreamTrack;
     notifyListeners();
     await _engine.skipToIndex(index);
   }
@@ -283,7 +312,7 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
     await _engine.seekTo(target);
     final current = currentTrack;
-    if (current != null) {
+    if (current != null && !current.isStreamTrack) {
       _persistLastSession(current.id, target.inMilliseconds);
     }
   }
@@ -389,6 +418,62 @@ class PlayerProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> refreshSpatial8dState() async {
+    _spatial8d = await _engine.getSpatial8dState();
+    notifyListeners();
+  }
+
+  Future<void> _pushSpatial8dState(Spatial8dState next) async {
+    final seq = ++_spatial8dMutationSeq;
+    _spatial8d = next;
+    notifyListeners();
+    final synced = await _engine.updateSpatial8dState(next);
+    if (seq == _spatial8dMutationSeq) {
+      _spatial8d = synced;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setSpatial8dEnabled(bool enabled) {
+    return _pushSpatial8dState(_spatial8d.copyWith(enabled: enabled));
+  }
+
+  Future<void> setSpatial8dMode(Spatial8dOutputMode mode) {
+    final optimisticResolved = switch (mode) {
+      Spatial8dOutputMode.headphones => 'headphones',
+      Spatial8dOutputMode.speaker => 'speaker',
+      Spatial8dOutputMode.auto => _spatial8d.resolvedOutput,
+    };
+    return _pushSpatial8dState(
+      _spatial8d.copyWith(
+        mode: mode,
+        resolvedOutput: optimisticResolved,
+      ),
+    );
+  }
+
+  Future<void> setSpatial8dSpeedHz(double speedHz) {
+    return _pushSpatial8dState(
+      _spatial8d.copyWith(speedHz: speedHz.clamp(0.05, 0.50)),
+    );
+  }
+
+  Future<void> setSpatial8dIntensity(double intensity) {
+    return _pushSpatial8dState(
+      _spatial8d.copyWith(intensity: intensity.clamp(0.0, 1.0)),
+    );
+  }
+
+  Future<void> resetSpatial8d() {
+    return _pushSpatial8dState(
+      _spatial8d.copyWith(
+        mode: Spatial8dOutputMode.auto,
+        speedHz: 0.16,
+        intensity: 0.75,
+      ),
+    );
+  }
+
   Future<void> _persistLastSession(String trackId, int posMs) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -400,6 +485,7 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _playbackSub?.cancel();
+    _spatial8dSub?.cancel();
     _errorSub?.cancel();
     super.dispose();
   }

@@ -1,11 +1,11 @@
 // =============================================================================
-// artwork_view.dart — Renderizador rápido de carátulas locales con fallback cálido
+// artwork_view.dart — Renderizador rápido de carátulas locales y remotas
 // -----------------------------------------------------------------------------
 // Qué hace este archivo:
-//   Muestra la carátula incrustada cacheada en disco usando decodificación
-//   redimensionada (cacheWidth) para ahorrar RAM y mantener el scroll a 120 fps.
-//   Si el archivo local no trae portada, dibuja una cubierta estilizada tipo
-//   vinilo/funda cálida usando un tinte determinista por álbum o título.
+//   Muestra la carátula incrustada cacheada en disco o una miniatura HTTP/HTTPS
+//   de Explorar usando decodificación redimensionada (cacheWidth) para ahorrar
+//   RAM y mantener el scroll fluido. Si no hay portada o falla la red, dibuja
+//   una cubierta estilizada tipo vinilo/funda cálida determinista.
 // =============================================================================
 
 import 'dart:io';
@@ -31,9 +31,44 @@ class ArtworkView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AuraTheme.of(context);
+    final rawPath = artworkPath?.trim() ?? '';
+    final isNetwork =
+        rawPath.startsWith('https://') || rawPath.startsWith('http://');
     final hasFile =
-        artworkPath != null && artworkPath!.isNotEmpty && File(artworkPath!).existsSync();
+        !isNetwork && rawPath.isNotEmpty && File(rawPath).existsSync();
     final tint = AuraTheme.warmTintForSeed(seed, isDark: c.isDark);
+    final decodeWidth = (size * 2.5).round().clamp(64, 960);
+
+    Widget artworkChild;
+    if (isNetwork) {
+      artworkChild = Image.network(
+        rawPath,
+        fit: BoxFit.cover,
+        cacheWidth: decodeWidth,
+        errorBuilder: (_, __, ___) => _FallbackDiscArt(
+          seed: seed,
+          size: size,
+          tint: tint,
+        ),
+      );
+    } else if (hasFile) {
+      artworkChild = Image.file(
+        File(rawPath),
+        fit: BoxFit.cover,
+        cacheWidth: decodeWidth,
+        errorBuilder: (_, __, ___) => _FallbackDiscArt(
+          seed: seed,
+          size: size,
+          tint: tint,
+        ),
+      );
+    } else {
+      artworkChild = _FallbackDiscArt(
+        seed: seed,
+        size: size,
+        tint: tint,
+      );
+    }
 
     return Container(
       width: size,
@@ -56,22 +91,7 @@ class ArtworkView extends StatelessWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasFile
-          ? Image.file(
-              File(artworkPath!),
-              fit: BoxFit.cover,
-              cacheWidth: (size * 2.5).round(),
-              errorBuilder: (_, __, ___) => _FallbackDiscArt(
-                seed: seed,
-                size: size,
-                tint: tint,
-              ),
-            )
-          : _FallbackDiscArt(
-              seed: seed,
-              size: size,
-              tint: tint,
-            ),
+      child: artworkChild,
     );
   }
 }

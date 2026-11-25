@@ -22,7 +22,12 @@ import '../player/full_player_screen.dart';
 import '../settings/settings_screen.dart';
 
 class DownloadUrlScreen extends StatefulWidget {
-  const DownloadUrlScreen({super.key});
+  const DownloadUrlScreen({
+    super.key,
+    this.initialUrl,
+  });
+
+  final String? initialUrl;
 
   @override
   State<DownloadUrlScreen> createState() => _DownloadUrlScreenState();
@@ -40,6 +45,10 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialUrl?.trim() ?? '';
+    if (initial.isNotEmpty) {
+      _urlCtrl.text = initial;
+    }
     _loadEngineStatus();
   }
 

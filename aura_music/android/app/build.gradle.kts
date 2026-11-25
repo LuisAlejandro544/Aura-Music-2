@@ -338,11 +338,13 @@ registerAuraDspRustTask("debug")
 registerAuraDspRustTask("release")
 
 dependencies {
-    // Media3 ExoPlayer y MediaSession (Licencia Apache-2.0)
+    // Media3 ExoPlayer, MediaSession y caché de streaming progresivo (Licencia Apache-2.0)
     val media3Version = "1.4.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
+    implementation("androidx.media3:media3-datasource:$media3Version")
+    implementation("androidx.media3:media3-database:$media3Version")
 
     // DocumentFile para recorrer carpetas elegidas por el usuario vía SAF (Apache-2.0)
     implementation("androidx.documentfile:documentfile:1.0.1")

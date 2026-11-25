@@ -35,7 +35,10 @@ class AuraRustDspProcessor : BaseAudioProcessor() {
                 isFloatEncoding = true
                 inputAudioFormat
             }
-            else -> AudioProcessor.AudioFormat.NOT_SUPPORTED
+            else -> {
+                isFloatEncoding = false
+                AudioProcessor.AudioFormat.NOT_SET
+            }
         }
     }
 

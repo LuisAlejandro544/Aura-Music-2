@@ -16,7 +16,10 @@
 //      `AuraArtworkProcessor` en `filesDir/custom_artworks/`.
 //   6. Verifica integridad del audio, lee bitrate/sampleRate/duración e
 //      incrusta metadatos + portada en Rust (`AuraRustYtBridge.verifyAndTagAudio`
-//      con `lofty`), devolviendo un `AuraTrackMetadata` listo para ExoPlayer.
+//   7. Para el apartado Explorar, ejecuta búsquedas planas (`search_explore`) y
+//      resuelve URLs de audio directo + cabeceras (`resolve_stream`) en
+//      `Dispatchers.IO`, alimentando `AuraStreamCache` para reproducir mientras
+//      se descarga progresivamente con Media3.
 // =============================================================================
 
 package com.auramusic.player
@@ -26,6 +29,7 @@ import android.net.Uri
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -518,6 +522,221 @@ object AuraYtDownloader {
             sampleRateHz = finalSampleRate,
             artworkPath = persistedArtworkPath
         )
+    }
+
+    suspend fun searchExplore(
+        context: Context,
+        queryOrUrl: String,
+        limit: Int = 18
+    ): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val trimmed = queryOrUrl.trim()
+        if (trimmed.isEmpty()) {
+            throw YtDownloadDetailedException(
+                summary = "Escribe una canción, artista o enlace para buscar.",
+                rawDetail = "Stage: search_explore_validation\nQuery vacía"
+            )
+        }
+
+        val quickJsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
+        val updateDir = File(appContext.filesDir, YT_UPDATES_DIR).apply {
+            if (!exists()) mkdirs()
+        }
+
+        val rawResult = engineOpMutex.withLock {
+            maybeAutoUpdateSilent(appContext)
+            try {
+                val py = ensurePythonStarted(appContext)
+                val module = py.getModule("aura_yt_engine")
+                module.callAttr(
+                    "search_explore",
+                    trimmed,
+                    limit.coerceIn(1, 35),
+                    quickJsPath,
+                    updateDir.absolutePath
+                ).toString()
+            } catch (err: Throwable) {
+                throw YtDownloadDetailedException(
+                    summary = err.message ?: "Error al buscar música con yt-dlp",
+                    rawDetail = "Stage: search_explore_python\nQuery: $trimmed\n${err.stackTraceToString()}"
+                )
+            }
+        }
+
+        val resultJson = JSONObject(rawResult)
+        if (!resultJson.optBoolean("ok", false)) {
+            val err = resultJson.optString("error", "No se pudo completar la búsqueda")
+            val rawErr = resultJson.optString("rawError", "").ifBlank { rawResult }
+            throw YtDownloadDetailedException(summary = err, rawDetail = rawErr)
+        }
+
+        val itemsArray = resultJson.optJSONArray("items")
+        val items = mutableListOf<Map<String, Any?>>()
+        if (itemsArray != null) {
+            for (i in 0 until itemsArray.length()) {
+                val obj = itemsArray.optJSONObject(i) ?: continue
+                val videoId = obj.optString("videoId", "")
+                if (videoId.isBlank()) continue
+                val cachedBytes = AuraStreamCache.getCachedBytes(appContext, videoId)
+                items.add(
+                    mapOf(
+                        "videoId" to videoId,
+                        "title" to obj.optString("title", videoId),
+                        "artist" to obj.optString("artist", "Artista desconocido"),
+                        "album" to obj.optString("album", "Explorar Aura"),
+                        "durationMs" to obj.optLong("durationMs", 0L),
+                        "thumbnailUrl" to obj.optString("thumbnailUrl", ""),
+                        "webpageUrl" to obj.optString("webpageUrl", ""),
+                        "viewCount" to obj.optLong("viewCount", 0L),
+                        "cachedBytes" to cachedBytes,
+                    )
+                )
+            }
+        }
+
+        mapOf(
+            "ok" to true,
+            "query" to resultJson.optString("query", trimmed),
+            "items" to items
+        )
+    }
+
+    suspend fun resolveAudioStream(
+        context: Context,
+        rawUrl: String,
+        videoIdHint: String = "",
+        formatPref: String = "best"
+    ): ResolvedStreamEntry = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val cleanHint = videoIdHint.trim()
+
+        if (cleanHint.isNotEmpty()) {
+            AuraStreamCache.getValidResolvedStream(cleanHint)?.let { cached ->
+                return@withContext cached
+            }
+        }
+
+        val parsed = AuraRustYtBridge.parseMediaUrl(rawUrl)
+        val targetUrl = if (parsed.valid && parsed.canonicalUrl.isNotBlank()) {
+            parsed.canonicalUrl
+        } else {
+            rawUrl.trim()
+        }
+        if (targetUrl.isBlank()) {
+            throw YtDownloadDetailedException(
+                summary = parsed.error ?: "Enlace de streaming inválido",
+                rawDetail = "Stage: resolve_stream_url\nInput: $rawUrl"
+            )
+        }
+
+        val quickJsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
+        val updateDir = File(appContext.filesDir, YT_UPDATES_DIR).apply {
+            if (!exists()) mkdirs()
+        }
+
+        val rawResult = engineOpMutex.withLock {
+            if (cleanHint.isNotEmpty()) {
+                AuraStreamCache.getValidResolvedStream(cleanHint)?.let { cached ->
+                    return@withLock null to cached
+                }
+            }
+
+            maybeAutoUpdateSilent(appContext)
+            try {
+                val py = ensurePythonStarted(appContext)
+                val module = py.getModule("aura_yt_engine")
+                val jsonStr = module.callAttr(
+                    "resolve_stream",
+                    targetUrl,
+                    formatPref,
+                    quickJsPath,
+                    updateDir.absolutePath
+                ).toString()
+                jsonStr to null
+            } catch (err: Throwable) {
+                throw YtDownloadDetailedException(
+                    summary = err.message ?: "Error al resolver stream de audio",
+                    rawDetail = "Stage: resolve_stream_python\nURL: $targetUrl\n${err.stackTraceToString()}"
+                )
+            }
+        }
+
+        rawResult.second?.let { return@withContext it }
+
+        val jsonStr = rawResult.first ?: "{}"
+        val resultJson = JSONObject(jsonStr)
+        if (!resultJson.optBoolean("ok", false)) {
+            val err = resultJson.optString("error", "No se pudo conectar el flujo de audio")
+            val rawErr = resultJson.optString("rawError", "").ifBlank { jsonStr }
+            throw YtDownloadDetailedException(summary = err, rawDetail = rawErr)
+        }
+
+        val resolvedId = resultJson.optString("videoId", "").ifBlank { cleanHint.ifBlank { "stream" } }
+        val headersObj = resultJson.optJSONObject("httpHeaders")
+        val headers = mutableMapOf<String, String>()
+        if (headersObj != null) {
+            val keys = headersObj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = headersObj.optString(key, "")
+                if (key.isNotBlank() && value.isNotBlank()) {
+                    headers[key] = value
+                }
+            }
+        }
+
+        val entry = ResolvedStreamEntry(
+            videoId = resolvedId,
+            webpageUrl = resultJson.optString("webpageUrl", targetUrl),
+            streamUrl = resultJson.getString("streamUrl"),
+            httpHeaders = headers,
+            mimeType = resultJson.optString("mimeType", "audio/mp4"),
+            ext = resultJson.optString("ext", "m4a"),
+            abr = resultJson.optInt("abr", 0),
+            asr = resultJson.optInt("asr", 0),
+            durationMs = resultJson.optLong("durationMs", 0L),
+            expiresAtMs = resultJson.optLong(
+                "expiresAtMs",
+                System.currentTimeMillis() + 4L * 60L * 60L * 1000L
+            ),
+        )
+        AuraStreamCache.putResolvedStream(entry)
+        if (cleanHint.isNotEmpty() && cleanHint != resolvedId) {
+            AuraStreamCache.putResolvedStream(entry.copy(videoId = cleanHint))
+        }
+        entry
+    }
+
+    /**
+     * Invocado exclusivamente desde el hilo Loader en segundo plano de ExoPlayer
+     * (`ResolvingDataSource`) cuando avanza a otra pista en cola de Explorar.
+     */
+    fun resolveStreamBlocking(
+        context: Context,
+        rawUrl: String,
+        videoIdHint: String = "",
+        formatPref: String = "best"
+    ): ResolvedStreamEntry = runBlocking(Dispatchers.IO) {
+        resolveAudioStream(
+            context = context,
+            rawUrl = rawUrl,
+            videoIdHint = videoIdHint,
+            formatPref = formatPref
+        )
+    }
+
+    private fun maybeAutoUpdateSilent(appContext: Context) {
+        if (!isAutoUpdateEnabled(appContext)) return
+        val lastCheck = prefs(appContext).getLong(KEY_LAST_CHECK_MS, 0L)
+        if (System.currentTimeMillis() - lastCheck >= AUTO_UPDATE_INTERVAL_MS) {
+            runCatching {
+                runUpdateInternal(
+                    context = appContext,
+                    force = false,
+                    onProgress = { _, _, _, _, _, _ -> }
+                )
+            }
+        }
     }
 
     private fun sha256Short(input: String): String {

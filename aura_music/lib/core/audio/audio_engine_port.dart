@@ -20,6 +20,7 @@ abstract class AudioEnginePort {
   Stream<({int processed, int total})> get importProgressEvents;
   Stream<DownloadProgressEvent> get downloadProgressEvents;
   Stream<YtUpdateProgressEvent> get ytUpdateProgressEvents;
+  Stream<Spatial8dState> get spatial8dEvents;
   Stream<String> get errorEvents;
 
   Future<void> initialize();
@@ -33,6 +34,21 @@ abstract class AudioEnginePort {
     required String url,
     YtDownloadFormat format = YtDownloadFormat.best,
   });
+
+  /// Explorar y streaming progresivo con yt-dlp + Media3 SimpleCache
+  Future<ExploreSearchResult> searchExplore({
+    required String query,
+    int limit = 18,
+  });
+
+  Future<ResolvedStreamInfo> resolveExploreStream({
+    required String url,
+    String videoId = '',
+    YtDownloadFormat format = YtDownloadFormat.best,
+  });
+
+  Future<StreamCacheStats> getStreamCacheStats();
+  Future<StreamCacheStats> clearStreamCache();
 
   Future<YtEngineStatus> getYtEngineStatus({bool includePython = false});
   Future<YtUpdateCheckResult> checkYtEngineUpdates();
@@ -74,6 +90,11 @@ abstract class AudioEnginePort {
   Future<EqualizerState> getEqualizerState();
 
   Future<EqualizerState> updateEqualizerState(EqualizerState state);
+
+  /// Procesador Audio 8D orbital en Rust (`aura_dsp`)
+  Future<Spatial8dState> getSpatial8dState();
+
+  Future<Spatial8dState> updateSpatial8dState(Spatial8dState state);
 
   /// Conversión nativa a WebP sin pérdida y actualización de metadatos en cola
   Future<LosslessWebpResult> convertImageToLosslessWebp({

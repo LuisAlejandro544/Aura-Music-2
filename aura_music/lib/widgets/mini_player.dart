@@ -145,6 +145,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   IconButton(
                     onPressed: () {
                       HapticFeedback.selectionClick();
+                      if (track.isStreamTrack) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Guarda la pista en tu biblioteca desde el reproductor para marcarla como favorita.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
                       library.toggleFavorite(track.id);
                     },
                     icon: Icon(

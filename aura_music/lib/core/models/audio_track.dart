@@ -39,6 +39,7 @@ class AudioTrack {
     this.importedAtMs = 0,
     this.lastPlayedAtMs = 0,
     this.playCount = 0,
+    this.sourceUrl = '',
   });
 
   final String id;
@@ -58,13 +59,33 @@ class AudioTrack {
   final int importedAtMs;
   final int lastPlayedAtMs;
   final int playCount;
+  final String sourceUrl;
 
   Duration get duration => Duration(milliseconds: durationMs);
   bool get hasCustomWebpArtwork =>
       (artworkPath ?? '').toLowerCase().endsWith('.webp');
 
+  bool get isStreamTrack =>
+      uri.startsWith('aura-stream://') ||
+      uri.startsWith('http://') ||
+      uri.startsWith('https://');
+
+  String get streamVideoId {
+    if (!uri.startsWith('aura-stream://')) return '';
+    return Uri.tryParse(uri)?.queryParameters['id'] ?? '';
+  }
+
+  String get effectiveSourceUrl {
+    if (sourceUrl.isNotEmpty) return sourceUrl;
+    if (uri.startsWith('aura-stream://')) {
+      return Uri.tryParse(uri)?.queryParameters['u'] ?? '';
+    }
+    return '';
+  }
+
   String get formatBadge {
     final lower = mimeType.toLowerCase();
+    if (lower.contains('stream')) return 'STREAM';
     if (lower.contains('flac')) return 'FLAC';
     if (lower.contains('wav')) return 'WAV';
     if (lower.contains('ogg') || lower.contains('opus')) return 'OGG';
@@ -94,6 +115,10 @@ class AudioTrack {
     String? artist,
     String? album,
     String? folderName,
+    String? mimeType,
+    int? bitrateKbps,
+    int? sampleRateHz,
+    int? durationMs,
     bool? isFavorite,
     int? lastPlayedAtMs,
     int? playCount,
@@ -102,6 +127,7 @@ class AudioTrack {
     String? originalArtworkPath,
     bool clearOriginalArtworkPath = false,
     bool? hasCustomMetadata,
+    String? sourceUrl,
   }) {
     return AudioTrack(
       id: id,
@@ -110,10 +136,10 @@ class AudioTrack {
       artist: artist ?? this.artist,
       album: album ?? this.album,
       folderName: folderName ?? this.folderName,
-      durationMs: durationMs,
-      mimeType: mimeType,
-      bitrateKbps: bitrateKbps,
-      sampleRateHz: sampleRateHz,
+      durationMs: durationMs ?? this.durationMs,
+      mimeType: mimeType ?? this.mimeType,
+      bitrateKbps: bitrateKbps ?? this.bitrateKbps,
+      sampleRateHz: sampleRateHz ?? this.sampleRateHz,
       artworkPath: clearArtworkPath ? null : (artworkPath ?? this.artworkPath),
       originalArtworkPath: clearOriginalArtworkPath
           ? null
@@ -123,6 +149,7 @@ class AudioTrack {
       importedAtMs: importedAtMs,
       lastPlayedAtMs: lastPlayedAtMs ?? this.lastPlayedAtMs,
       playCount: playCount ?? this.playCount,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
     );
   }
 
@@ -219,13 +246,17 @@ class NativePlaybackEvent {
     required this.durationMs,
     required this.shuffleEnabled,
     required this.repeatMode,
+    this.bufferedPositionMs = 0,
+    this.isBuffering = false,
     this.currentMediaId,
   });
 
   final bool isPlaying;
+  final bool isBuffering;
   final int currentIndex;
   final String? currentMediaId;
   final int positionMs;
+  final int bufferedPositionMs;
   final int durationMs;
   final bool shuffleEnabled;
   final AuraRepeatMode repeatMode;
@@ -659,8 +690,275 @@ class EqualizerState {
       bandGainsDb: parsedBands,
       rustCrate: (map['rustCrate'] ?? 'aura_dsp').toString(),
       engine:
-          (map['engine'] ?? 'Biquad IIR 5-band + Soft Limiter').toString(),
+          (map['engine'] ?? 'Biquad IIR 5-band + 8D Orbital + Soft Limiter')
+              .toString(),
       arch: (map['arch'] ?? '').toString(),
     );
   }
 }
+
+enum Spatial8dOutputMode { auto, headphones, speaker }
+
+@immutable
+class Spatial8dState {
+  const Spatial8dState({
+    this.enabled = false,
+    this.mode = Spatial8dOutputMode.auto,
+    this.resolvedOutput = 'speaker',
+    this.speedHz = 0.16,
+    this.intensity = 0.75,
+    this.rustCrate = 'aura_dsp',
+    this.arch = '',
+  });
+
+  final bool enabled;
+  final Spatial8dOutputMode mode;
+  final String resolvedOutput;
+  final double speedHz;
+  final double intensity;
+  final String rustCrate;
+  final String arch;
+
+  bool get isHeadphonesActive => resolvedOutput == 'headphones';
+
+  double get orbitSeconds => 1.0 / speedHz.clamp(0.05, 0.50);
+
+  String get modeWireValue => mode.name;
+
+  Spatial8dState copyWith({
+    bool? enabled,
+    Spatial8dOutputMode? mode,
+    String? resolvedOutput,
+    double? speedHz,
+    double? intensity,
+    String? rustCrate,
+    String? arch,
+  }) {
+    return Spatial8dState(
+      enabled: enabled ?? this.enabled,
+      mode: mode ?? this.mode,
+      resolvedOutput: resolvedOutput ?? this.resolvedOutput,
+      speedHz: speedHz ?? this.speedHz,
+      intensity: intensity ?? this.intensity,
+      rustCrate: rustCrate ?? this.rustCrate,
+      arch: arch ?? this.arch,
+    );
+  }
+
+  factory Spatial8dState.fromMap(Map<String, dynamic> map) {
+    final rawMode = (map['mode'] ?? 'auto').toString();
+    final mode = switch (rawMode) {
+      'headphones' => Spatial8dOutputMode.headphones,
+      'speaker' => Spatial8dOutputMode.speaker,
+      _ => Spatial8dOutputMode.auto,
+    };
+    return Spatial8dState(
+      enabled: map['enabled'] == true,
+      mode: mode,
+      resolvedOutput:
+          (map['resolvedOutput'] ?? 'speaker').toString() == 'headphones'
+              ? 'headphones'
+              : 'speaker',
+      speedHz:
+          ((map['speedHz'] as num?)?.toDouble() ?? 0.16).clamp(0.05, 0.50),
+      intensity:
+          ((map['intensity'] as num?)?.toDouble() ?? 0.75).clamp(0.0, 1.0),
+      rustCrate: (map['rustCrate'] ?? 'aura_dsp').toString(),
+      arch: (map['arch'] ?? '').toString(),
+    );
+  }
+}
+
+@immutable
+class ExploreCategory {
+  const ExploreCategory({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.query,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final String query;
+}
+
+@immutable
+class ExploreTrackItem {
+  const ExploreTrackItem({
+    required this.videoId,
+    required this.title,
+    required this.artist,
+    required this.album,
+    required this.durationMs,
+    required this.thumbnailUrl,
+    required this.webpageUrl,
+    this.viewCount = 0,
+    this.cachedBytes = 0,
+    this.resolvedMimeType = '',
+    this.resolvedBitrateKbps = 0,
+    this.resolvedSampleRateHz = 0,
+  });
+
+  final String videoId;
+  final String title;
+  final String artist;
+  final String album;
+  final int durationMs;
+  final String thumbnailUrl;
+  final String webpageUrl;
+  final int viewCount;
+  final int cachedBytes;
+  final String resolvedMimeType;
+  final int resolvedBitrateKbps;
+  final int resolvedSampleRateHz;
+
+  String get trackId => 'yt_$videoId';
+  Duration get duration => Duration(milliseconds: durationMs);
+  bool get hasCachedChunks => cachedBytes > 0;
+
+  AudioTrack toStreamTrack() {
+    final streamUri = Uri(
+      scheme: 'aura-stream',
+      host: 'track',
+      queryParameters: {
+        'id': videoId,
+        'u': webpageUrl,
+      },
+    ).toString();
+
+    return AudioTrack(
+      id: trackId,
+      uri: streamUri,
+      title: title,
+      artist: artist,
+      album: album,
+      folderName: 'Explorar · Streaming',
+      durationMs: durationMs,
+      mimeType: resolvedMimeType.isNotEmpty ? resolvedMimeType : 'audio/stream',
+      bitrateKbps: resolvedBitrateKbps,
+      sampleRateHz: resolvedSampleRateHz,
+      artworkPath: thumbnailUrl.isNotEmpty ? thumbnailUrl : null,
+      sourceUrl: webpageUrl,
+    );
+  }
+
+  ExploreTrackItem copyWith({
+    int? cachedBytes,
+    String? resolvedMimeType,
+    int? resolvedBitrateKbps,
+    int? resolvedSampleRateHz,
+    int? durationMs,
+  }) {
+    return ExploreTrackItem(
+      videoId: videoId,
+      title: title,
+      artist: artist,
+      album: album,
+      durationMs: durationMs ?? this.durationMs,
+      thumbnailUrl: thumbnailUrl,
+      webpageUrl: webpageUrl,
+      viewCount: viewCount,
+      cachedBytes: cachedBytes ?? this.cachedBytes,
+      resolvedMimeType: resolvedMimeType ?? this.resolvedMimeType,
+      resolvedBitrateKbps: resolvedBitrateKbps ?? this.resolvedBitrateKbps,
+      resolvedSampleRateHz: resolvedSampleRateHz ?? this.resolvedSampleRateHz,
+    );
+  }
+
+  factory ExploreTrackItem.fromMap(Map<String, dynamic> map) {
+    return ExploreTrackItem(
+      videoId: (map['videoId'] ?? '').toString(),
+      title: (map['title'] ?? 'Pista en streaming').toString(),
+      artist: (map['artist'] ?? 'Artista desconocido').toString(),
+      album: (map['album'] ?? 'Explorar Aura').toString(),
+      durationMs: (map['durationMs'] as num?)?.toInt() ?? 0,
+      thumbnailUrl: (map['thumbnailUrl'] ?? '').toString(),
+      webpageUrl: (map['webpageUrl'] ?? '').toString(),
+      viewCount: (map['viewCount'] as num?)?.toInt() ?? 0,
+      cachedBytes: (map['cachedBytes'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+@immutable
+class ExploreSearchResult {
+  const ExploreSearchResult({
+    required this.query,
+    required this.items,
+  });
+
+  final String query;
+  final List<ExploreTrackItem> items;
+}
+
+@immutable
+class ResolvedStreamInfo {
+  const ResolvedStreamInfo({
+    required this.videoId,
+    required this.webpageUrl,
+    required this.mimeType,
+    required this.ext,
+    required this.abr,
+    required this.asr,
+    required this.durationMs,
+    required this.expiresAtMs,
+    required this.cachedBytes,
+  });
+
+  final String videoId;
+  final String webpageUrl;
+  final String mimeType;
+  final String ext;
+  final int abr;
+  final int asr;
+  final int durationMs;
+  final int expiresAtMs;
+  final int cachedBytes;
+
+  factory ResolvedStreamInfo.fromMap(Map<String, dynamic> map) {
+    return ResolvedStreamInfo(
+      videoId: (map['videoId'] ?? '').toString(),
+      webpageUrl: (map['webpageUrl'] ?? '').toString(),
+      mimeType: (map['mimeType'] ?? 'audio/mp4').toString(),
+      ext: (map['ext'] ?? 'm4a').toString(),
+      abr: (map['abr'] as num?)?.toInt() ?? 0,
+      asr: (map['asr'] as num?)?.toInt() ?? 0,
+      durationMs: (map['durationMs'] as num?)?.toInt() ?? 0,
+      expiresAtMs: (map['expiresAtMs'] as num?)?.toInt() ?? 0,
+      cachedBytes: (map['cachedBytes'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+@immutable
+class StreamCacheStats {
+  const StreamCacheStats({
+    this.usedBytes = 0,
+    this.maxBytes = 512 * 1024 * 1024,
+    this.cachedTracks = 0,
+  });
+
+  final int usedBytes;
+  final int maxBytes;
+  final int cachedTracks;
+
+  String get formattedUsed {
+    if (usedBytes <= 0) return '0 MB';
+    if (usedBytes < 1024 * 1024) {
+      return '${(usedBytes / 1024).toStringAsFixed(0)} KB';
+    }
+    return '${(usedBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  factory StreamCacheStats.fromMap(Map<String, dynamic> map) {
+    return StreamCacheStats(
+      usedBytes: (map['usedBytes'] as num?)?.toInt() ?? 0,
+      maxBytes: (map['maxBytes'] as num?)?.toInt() ?? 512 * 1024 * 1024,
+      cachedTracks: (map['cachedTracks'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+

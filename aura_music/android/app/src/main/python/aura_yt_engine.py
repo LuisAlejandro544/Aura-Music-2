@@ -10,6 +10,9 @@
 #   - Descarga flujos de audio directo (M4A/AAC o WebM/Opus) sin requerir
 #     FFmpeg GPL y captura el log técnico completo (debug/warnings/errors y
 #     traceback) para diagnósticos en dispositivo móvil.
+#   - Incluye búsqueda ligera para Explorar (`search_explore` con `ytsearch` /
+#     `extract_flat`) y resolución de stream directo (`resolve_stream` con
+#     `download=False`) devolviendo URL + cabeceras HTTP exactas para Media3.
 #   - Incluye auto-actualizador seguro vía PyPI JSON API + verificación SHA-256
 #     para actualizar los wheels puros Python de `yt-dlp` y `yt-dlp-ejs` en
 #     `filesDir/yt_dlp_updates/` con recarga en caliente de `sys.modules`.
@@ -29,6 +32,7 @@ import sys
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -942,6 +946,364 @@ def download_audio(
             attempt_reports.append(f"[{label}] {err_str}\n{traceback.format_exc().strip()}")
             if idx == 0:
                 emit_stage("resolving", "Reintentando extracción con perfil alternativo...")
+
+    summary = _summarize_error(attempt_summaries, logger)
+    raw_report = _build_raw_report(
+        url=url,
+        format_pref=format_pref,
+        quickjs_path=quickjs_path,
+        attempt_reports=attempt_reports,
+        logger=logger,
+    )
+    return json.dumps({"ok": False, "error": summary, "rawError": raw_report})
+
+
+def _normalize_explore_target(query_or_url: str, limit: int = 18) -> tuple[str, bool]:
+    """Convierte una búsqueda de texto en ytsearchN o conserva URLs válidas."""
+    cleaned = (query_or_url or "").strip()
+    safe_limit = max(1, min(int(limit or 18), 35))
+    lower = cleaned.lower()
+    if lower.startswith(("http://", "https://")):
+        return cleaned, True
+    if re.match(r"^ytsearch\d*:", lower):
+        return cleaned, False
+    return f"ytsearch{safe_limit}:{cleaned}", False
+
+
+def _pick_best_thumbnail(entry: dict, video_id: str) -> str:
+    thumb = str(entry.get("thumbnail") or "").strip()
+    if thumb.startswith(("http://", "https://")):
+        return thumb
+    thumbs = entry.get("thumbnails")
+    if isinstance(thumbs, list) and thumbs:
+        for item in reversed(thumbs):
+            if isinstance(item, dict):
+                cand = str(item.get("url") or "").strip()
+                if cand.startswith(("http://", "https://")):
+                    return cand
+    if video_id and re.match(r"^[A-Za-z0-9_-]{11}$", video_id):
+        return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+    return ""
+
+
+def _parse_explore_entry(entry: dict) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("_type") == "playlist" and entry.get("entries"):
+        return None
+
+    raw_url = str(entry.get("webpage_url") or entry.get("url") or "").strip()
+    video_id = str(entry.get("id") or "").strip()
+    if not video_id and raw_url:
+        video_id = hashlib.sha256(raw_url.encode("utf-8")).hexdigest()[:12]
+    if not video_id:
+        return None
+
+    title = str(entry.get("track") or entry.get("title") or "").strip()
+    if not title or title in ("[Private video]", "[Deleted video]", "[Unavailable video]"):
+        return None
+
+    # Saltar transmisiones en vivo sin duración finita si vienen marcadas explícitamente
+    if entry.get("is_live") is True and entry.get("live_status") == "is_live":
+        return None
+
+    artist = str(
+        entry.get("artist")
+        or entry.get("uploader")
+        or entry.get("channel")
+        or "Artista desconocido"
+    ).strip()
+    album = str(entry.get("album") or "Explorar Aura").strip()
+    duration_sec = entry.get("duration") or 0
+    try:
+        duration_ms = int(float(duration_sec) * 1000) if duration_sec else 0
+    except (TypeError, ValueError):
+        duration_ms = 0
+
+    if not raw_url or not raw_url.startswith(("http://", "https://")):
+        webpage_url = f"https://www.youtube.com/watch?v={video_id}"
+    else:
+        webpage_url = raw_url
+
+    try:
+        view_count = int(entry.get("view_count") or 0)
+    except (TypeError, ValueError):
+        view_count = 0
+
+    return {
+        "videoId": video_id,
+        "title": title,
+        "artist": artist,
+        "album": album,
+        "durationMs": max(0, duration_ms),
+        "thumbnailUrl": _pick_best_thumbnail(entry, video_id),
+        "webpageUrl": webpage_url,
+        "viewCount": max(0, view_count),
+    }
+
+
+def _extract_expire_ms_from_url(stream_url: str, fallback_ttl_ms: int = 4 * 60 * 60 * 1000) -> int:
+    now_ms = int(time.time() * 1000)
+    try:
+        parsed = urllib.parse.urlparse(stream_url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        raw_expire = (qs.get("expire") or qs.get("exp") or [""])[0]
+        if raw_expire and raw_expire.isdigit():
+            exp_ms = int(raw_expire) * 1000
+            if exp_ms > now_ms + 60_000:
+                return exp_ms
+    except Exception:
+        pass
+    return now_ms + fallback_ttl_ms
+
+
+def _mime_for_ext(ext: str) -> str:
+    lower = (ext or "").strip().lower()
+    if lower in ("m4a", "mp4", "aac"):
+        return "audio/mp4"
+    if lower in ("webm", "opus"):
+        return "audio/webm"
+    if lower in ("ogg", "oga"):
+        return "audio/ogg"
+    if lower == "mp3":
+        return "audio/mpeg"
+    if lower == "flac":
+        return "audio/flac"
+    return "audio/mp4"
+
+
+def search_explore(
+    query_or_url: str,
+    limit: int = 18,
+    quickjs_path: str = "",
+    update_dir: str = "",
+) -> str:
+    """Busca canciones o extrae listas planas para Explorar sin descargar audio."""
+    _configure_tls_and_paths(update_dir or None, quickjs_path)
+    cleaned_query = (query_or_url or "").strip()
+    if not cleaned_query:
+        return json.dumps(
+            {
+                "ok": False,
+                "items": [],
+                "query": "",
+                "error": "Escribe una canción, artista o enlace para buscar.",
+                "rawError": "",
+            }
+        )
+
+    try:
+        import yt_dlp
+    except Exception as exc:
+        return json.dumps(
+            {
+                "ok": False,
+                "items": [],
+                "query": cleaned_query,
+                "error": f"No se pudo cargar yt-dlp: {exc}",
+                "rawError": traceback.format_exc(),
+            }
+        )
+
+    target, is_url = _normalize_explore_target(cleaned_query, limit=limit)
+    safe_limit = max(1, min(int(limit or 18), 35))
+    js_runtimes = {"quickjs": {"path": quickjs_path}} if quickjs_path else {"quickjs": {}}
+    logger = _CaptureLogger()
+
+    opts = {
+        "extract_flat": "in_playlist" if is_url else True,
+        "skip_download": True,
+        "playlistend": safe_limit,
+        "ignoreerrors": True,
+        "noprogress": True,
+        "no_color": True,
+        "quiet": True,
+        "socket_timeout": 20,
+        "retries": 2,
+        "js_runtimes": js_runtimes,
+        "logger": logger,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(target, download=False)
+            if not info:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "items": [],
+                        "query": cleaned_query,
+                        "error": "No se encontraron resultados para esa búsqueda.",
+                        "rawError": "\n".join(logger.logs),
+                    }
+                )
+
+            raw_entries = info.get("entries")
+            if raw_entries is None:
+                raw_entries = [info]
+
+            items = []
+            seen_ids = set()
+            for entry in raw_entries:
+                parsed = _parse_explore_entry(entry)
+                if parsed is None:
+                    continue
+                vid = parsed["videoId"]
+                if vid in seen_ids:
+                    continue
+                seen_ids.add(vid)
+                items.append(parsed)
+                if len(items) >= safe_limit:
+                    break
+
+            return json.dumps(
+                {
+                    "ok": True,
+                    "items": items,
+                    "query": cleaned_query,
+                    "error": "",
+                    "rawError": "",
+                }
+            )
+    except Exception as exc:
+        err_str = str(exc)
+        summary = _summarize_error([err_str], logger)
+        raw_report = _build_raw_report(
+            url=target,
+            format_pref="explore",
+            quickjs_path=quickjs_path,
+            attempt_reports=[f"[search_explore] {err_str}\n{traceback.format_exc().strip()}"],
+            logger=logger,
+        )
+        return json.dumps(
+            {
+                "ok": False,
+                "items": [],
+                "query": cleaned_query,
+                "error": summary,
+                "rawError": raw_report,
+            }
+        )
+
+
+def resolve_stream(
+    url: str,
+    format_pref: str = "best",
+    quickjs_path: str = "",
+    update_dir: str = "",
+) -> str:
+    """Resuelve URL directa de audio + cabeceras HTTP para streaming en Media3."""
+    _configure_tls_and_paths(update_dir or None, quickjs_path)
+
+    try:
+        import yt_dlp
+    except Exception as exc:
+        return json.dumps(
+            {
+                "ok": False,
+                "error": f"No se pudo cargar yt-dlp: {exc}",
+                "rawError": traceback.format_exc(),
+            }
+        )
+
+    js_runtimes = {"quickjs": {"path": quickjs_path}} if quickjs_path else {"quickjs": {}}
+    logger = _CaptureLogger()
+
+    base_opts = {
+        "format": _format_selector(format_pref),
+        "skip_download": True,
+        "noplaylist": True,
+        "noprogress": True,
+        "no_color": True,
+        "quiet": True,
+        "verbose": True,
+        "retries": 2,
+        "socket_timeout": 20,
+        "js_runtimes": js_runtimes,
+        "logger": logger,
+    }
+
+    attempts = [
+        ("Stream Intento 1 (cliente por defecto)", base_opts),
+        (
+            "Stream Intento 2 (player_client=android_vr,tv,web)",
+            {
+                **base_opts,
+                "extractor_args": {"youtube": {"player_client": ["android_vr", "tv", "web"]}},
+            },
+        ),
+    ]
+
+    attempt_summaries: list[str] = []
+    attempt_reports: list[str] = []
+
+    for label, opts in attempts:
+        logger._append("INFO", f"--- {label} ---")
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    msg = "yt-dlp no devolvió flujo de audio"
+                    attempt_summaries.append(msg)
+                    attempt_reports.append(f"[{label}] {msg}")
+                    continue
+
+                if "entries" in info and info["entries"]:
+                    info = next((e for e in info["entries"] if e), info)
+
+                selected = info
+                if not selected.get("url"):
+                    req_formats = info.get("requested_formats") or []
+                    if req_formats and isinstance(req_formats[0], dict):
+                        selected = req_formats[0]
+
+                stream_url = str(selected.get("url") or "").strip()
+                if not stream_url:
+                    msg = "No se encontró URL directa de streaming de audio"
+                    attempt_summaries.append(msg)
+                    attempt_reports.append(f"[{label}] {msg}")
+                    continue
+
+                raw_headers = selected.get("http_headers") or info.get("http_headers") or {}
+                headers = {
+                    str(k): str(v)
+                    for k, v in raw_headers.items()
+                    if k is not None and v is not None
+                }
+
+                video_id = str(info.get("id") or "stream")
+                ext = str(selected.get("ext") or info.get("ext") or "m4a")
+                duration_sec = info.get("duration") or 0
+                duration_ms = int(float(duration_sec) * 1000) if duration_sec else 0
+
+                return json.dumps(
+                    {
+                        "ok": True,
+                        "videoId": video_id,
+                        "streamUrl": stream_url,
+                        "httpHeaders": headers,
+                        "ext": ext,
+                        "mimeType": _mime_for_ext(ext),
+                        "abr": int(selected.get("abr") or info.get("abr") or 0),
+                        "asr": int(selected.get("asr") or info.get("asr") or 0),
+                        "durationMs": max(0, duration_ms),
+                        "title": str(info.get("track") or info.get("title") or video_id).strip(),
+                        "artist": str(
+                            info.get("artist")
+                            or info.get("uploader")
+                            or info.get("channel")
+                            or "Artista desconocido"
+                        ).strip(),
+                        "album": str(info.get("album") or "Explorar Aura").strip(),
+                        "thumbnailUrl": _pick_best_thumbnail(info, video_id),
+                        "webpageUrl": str(info.get("webpage_url") or url),
+                        "expiresAtMs": _extract_expire_ms_from_url(stream_url),
+                    }
+                )
+        except Exception as exc:
+            err_str = str(exc)
+            attempt_summaries.append(err_str)
+            attempt_reports.append(f"[{label}] {err_str}\n{traceback.format_exc().strip()}")
 
     summary = _summarize_error(attempt_summaries, logger)
     raw_report = _build_raw_report(

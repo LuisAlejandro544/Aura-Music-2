@@ -108,10 +108,15 @@ class AuraAudioBridge(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val currentUri = mediaController?.currentMediaItem?.localConfiguration?.uri
+            if (currentUri?.scheme == "aura-stream") {
+                val vid = AuraStreamCache.extractVideoIdFromUri(currentUri)
+                AuraStreamCache.invalidate(vid)
+            }
             emitEvent(
                 mapOf(
                     "type" to "error",
-                    "message" to (error.localizedMessage ?: "No se pudo reproducir el archivo de audio")
+                    "message" to (error.localizedMessage ?: "No se pudo reproducir el audio")
                 )
             )
         }
@@ -120,6 +125,9 @@ class AuraAudioBridge(
     init {
         methodChannel.setMethodCallHandler(this)
         eventChannel.setStreamHandler(this)
+        AuraRustDspBridge.onSpatial8dRouteChanged = { stateMap ->
+            emitEvent(mapOf("type" to "spatial8dState") + stateMap)
+        }
     }
 
     /**
@@ -583,6 +591,115 @@ class AuraAudioBridge(
                 }
             }
 
+            "getSpatial8dState" -> {
+                bridgeScope.launch {
+                    val state = withContext(Dispatchers.IO) {
+                        AuraRustDspBridge.getSpatial8dStateMap(activity.applicationContext)
+                    }
+                    result.success(state)
+                }
+            }
+
+            "updateSpatial8dState" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: false
+                val mode = call.argument<String>("mode") ?: "auto"
+                val speedHz = (call.argument<Number>("speedHz")?.toFloat()) ?: 0.16f
+                val intensity = (call.argument<Number>("intensity")?.toFloat()) ?: 0.75f
+                bridgeScope.launch {
+                    val state = withContext(Dispatchers.IO) {
+                        AuraRustDspBridge.updateSpatial8dSettings(
+                            context = activity.applicationContext,
+                            enabled = enabled,
+                            mode = mode,
+                            speedHz = speedHz,
+                            intensity = intensity
+                        )
+                    }
+                    result.success(state)
+                }
+            }
+
+            "searchExplore" -> {
+                val query = call.argument<String>("query") ?: ""
+                val limit = call.argument<Int>("limit") ?: 18
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.searchExplore(
+                            context = activity.applicationContext,
+                            queryOrUrl = query,
+                            limit = limit
+                        )
+                    }.fold(
+                        onSuccess = { payload -> result.success(payload) },
+                        onFailure = { err ->
+                            val rawDetail = when (err) {
+                                is YtDownloadDetailedException -> err.rawDetail
+                                else -> err.stackTraceToString()
+                            }
+                            result.error(
+                                "YT_EXPLORE_ERR",
+                                err.message ?: "Error al explorar música",
+                                rawDetail
+                            )
+                        }
+                    )
+                }
+            }
+
+            "resolveExploreStream" -> {
+                val url = call.argument<String>("url") ?: ""
+                val videoId = call.argument<String>("videoId") ?: ""
+                val formatPref = call.argument<String>("format") ?: "best"
+                if (url.isBlank()) {
+                    result.error("INVALID_ARG", "La URL del stream no puede estar vacía", null)
+                    return
+                }
+                bridgeScope.launch {
+                    runCatching {
+                        val appContext = activity.applicationContext
+                        val entry = AuraYtDownloader.resolveAudioStream(
+                            context = appContext,
+                            rawUrl = url,
+                            videoIdHint = videoId,
+                            formatPref = formatPref
+                        )
+                        val cachedBytes = AuraStreamCache.getCachedBytes(appContext, entry.videoId)
+                        entry.toMap(cachedBytes)
+                    }.fold(
+                        onSuccess = { map -> result.success(map) },
+                        onFailure = { err ->
+                            val rawDetail = when (err) {
+                                is YtDownloadDetailedException -> err.rawDetail
+                                else -> err.stackTraceToString()
+                            }
+                            result.error(
+                                "YT_STREAM_ERR",
+                                err.message ?: "Error al conectar el flujo de audio",
+                                rawDetail
+                            )
+                        }
+                    )
+                }
+            }
+
+            "getStreamCacheStats" -> {
+                bridgeScope.launch {
+                    val stats = withContext(Dispatchers.IO) {
+                        AuraStreamCache.getCacheStats(activity.applicationContext)
+                    }
+                    result.success(stats)
+                }
+            }
+
+            "clearStreamCache" -> {
+                bridgeScope.launch {
+                    val stats = withContext(Dispatchers.IO) {
+                        AuraStreamCache.clearCache(activity.applicationContext)
+                    }
+                    result.success(stats)
+                }
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -601,17 +718,30 @@ class AuraAudioBridge(
             .setAlbumTitle(album)
 
         if (!artworkPath.isNullOrBlank()) {
-            val file = File(artworkPath)
-            if (file.exists()) {
-                metaBuilder.setArtworkUri(Uri.fromFile(file))
+            if (artworkPath.startsWith("http://") || artworkPath.startsWith("https://")) {
+                metaBuilder.setArtworkUri(Uri.parse(artworkPath))
+            } else {
+                val file = File(artworkPath)
+                if (file.exists()) {
+                    metaBuilder.setArtworkUri(Uri.fromFile(file))
+                }
             }
         }
 
-        return MediaItem.Builder()
+        val parsedUri = Uri.parse(uri)
+        val itemBuilder = MediaItem.Builder()
             .setMediaId(id)
-            .setUri(Uri.parse(uri))
+            .setUri(parsedUri)
             .setMediaMetadata(metaBuilder.build())
-            .build()
+
+        if (parsedUri.scheme == "aura-stream") {
+            val vid = AuraStreamCache.extractVideoIdFromUri(parsedUri)
+            if (vid.isNotEmpty()) {
+                itemBuilder.setCustomCacheKey(AuraStreamCache.cacheKeyForVideoId(vid))
+            }
+        }
+
+        return itemBuilder.build()
     }
 
     private fun emitPlaybackState(controller: MediaController) {
@@ -624,10 +754,12 @@ class AuraAudioBridge(
             mapOf(
                 "type" to "playbackState",
                 "isPlaying" to controller.isPlaying,
+                "isBuffering" to (controller.playbackState == Player.STATE_BUFFERING),
                 "playbackState" to controller.playbackState,
                 "currentIndex" to controller.currentMediaItemIndex,
                 "currentMediaId" to controller.currentMediaItem?.mediaId,
                 "positionMs" to controller.currentPosition.coerceAtLeast(0L),
+                "bufferedPositionMs" to controller.bufferedPosition.coerceAtLeast(0L),
                 "durationMs" to controller.duration.coerceAtLeast(0L),
                 "shuffleEnabled" to controller.shuffleModeEnabled,
                 "repeatMode" to repeatStr
@@ -651,6 +783,7 @@ class AuraAudioBridge(
     }
 
     fun dispose() {
+        AuraRustDspBridge.onSpatial8dRouteChanged = null
         mainHandler.removeCallbacks(positionTicker)
         mediaController?.removeListener(playerListener)
         controllerFuture?.let { MediaController.releaseFuture(it) }

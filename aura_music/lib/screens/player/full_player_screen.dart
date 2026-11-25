@@ -23,6 +23,8 @@ import '../../widgets/artwork_view.dart';
 import '../../widgets/sheets/queue_sheet.dart';
 import '../../widgets/sheets/track_options_sheet.dart';
 import '../equalizer/equalizer_screen.dart';
+import '../import/download_url_screen.dart';
+import '../spatial/spatial_8d_screen.dart';
 
 class FullPlayerScreen extends StatefulWidget {
   const FullPlayerScreen({super.key});
@@ -57,6 +59,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     final tint = AuraTheme.warmTintForSeed(track.album, isDark: c.isDark);
     final totalMs = player.duration.inMilliseconds.clamp(1, 36000000);
     final currentMs = player.position.inMilliseconds.clamp(0, totalMs);
+    final bufferedMs =
+        player.bufferedPosition.inMilliseconds.clamp(currentMs, totalMs);
 
     return GestureDetector(
       onVerticalDragUpdate: (details) {
@@ -248,26 +252,42 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         IconButton.filledTonal(
                           onPressed: () {
                             HapticFeedback.selectionClick();
-                            library.toggleFavorite(track.id);
+                            if (track.isStreamTrack) {
+                              final url = track.effectiveSourceUrl;
+                              if (url.isNotEmpty) {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) =>
+                                        DownloadUrlScreen(initialUrl: url),
+                                  ),
+                                );
+                              }
+                            } else {
+                              library.toggleFavorite(track.id);
+                            }
                           },
                           style: IconButton.styleFrom(
                             backgroundColor:
                                 track.isFavorite ? c.accentSoft : c.surface,
                           ),
                           icon: Icon(
-                            track.isFavorite
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
+                            track.isStreamTrack
+                                ? Icons.download_for_offline_rounded
+                                : (track.isFavorite
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded),
                             color: track.isFavorite ? c.accent : c.textPrimary,
                           ),
-                          tooltip: 'Favorito',
+                          tooltip: track.isStreamTrack
+                              ? 'Guardar en biblioteca'
+                              : 'Favorito',
                         ),
                       ],
                     ),
 
                     const SizedBox(height: 16),
 
-                    // Barra de progreso interactiva táctil
+                    // Barra de progreso interactiva táctil (con buffer en streaming)
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         trackHeight: 4.5,
@@ -278,6 +298,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                           overlayRadius: 16,
                         ),
                         activeTrackColor: c.accent,
+                        secondaryActiveTrackColor:
+                            c.accent.withValues(alpha: 0.28),
                         inactiveTrackColor: c.border,
                         thumbColor: c.accent,
                         overlayColor: c.accent.withValues(alpha: 0.16),
@@ -286,6 +308,9 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         min: 0,
                         max: totalMs.toDouble(),
                         value: currentMs.toDouble(),
+                        secondaryTrackValue: track.isStreamTrack
+                            ? bufferedMs.toDouble()
+                            : null,
                         onChangeStart: (_) => player.beginScrub(),
                         onChanged: (val) => player.updateScrub(
                           Duration(milliseconds: val.round()),
@@ -443,7 +468,9 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                   const SizedBox(width: 6),
                                   Flexible(
                                     child: Text(
-                                      '${track.technicalSummary} · ExoPlayer',
+                                      track.isStreamTrack && player.isBuffering
+                                          ? '${track.technicalSummary} · Buffering'
+                                          : '${track.technicalSummary} · ExoPlayer',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
@@ -460,6 +487,26 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const Spatial8dScreen(),
+                                ),
+                              );
+                            },
+                            style: IconButton.styleFrom(
+                              backgroundColor: player.spatial8d.enabled
+                                  ? c.accentSoft
+                                  : c.surface,
+                              foregroundColor: player.spatial8d.enabled
+                                  ? c.accent
+                                  : c.textPrimary,
+                            ),
+                            icon: const Icon(Icons.surround_sound_rounded, size: 19),
+                            tooltip: 'Audio 8D',
+                          ),
+                          const SizedBox(width: 6),
                           IconButton.filledTonal(
                             onPressed: () {
                               Navigator.of(context).push(

@@ -4,7 +4,11 @@
 
 - **Interfaz**: Flutter + Dart con sistema de tema configurable Claro/Oscuro/Sistema (*Acoustic Warmth*: Claro `#F9F6F0` / Oscuro `#171413`, con `AuraPalette` `ThemeExtension` y `SettingsScreen`).
 - **Compuerta de permisos previos (`PermissionsScreen`)**: Antes de entrar a `AppShell`, la app verifica y solicita `POST_NOTIFICATIONS` (Android 13+) y explica el modelo privado de acceso bajo demanda (SAF + Photo Picker).
-- **Motor de audio**: `androidx.media3:media3-exoplayer` + `media3-session` dentro de `AuraPlaybackService.kt`.
+- **Motor de audio**: `androidx.media3:media3-exoplayer` + `media3-session` + `media3-datasource` + `media3-database` dentro de `AuraPlaybackService.kt`.
+- **Streaming progresivo en caché (`AuraStreamCache.kt` + `ExploreScreen`)**:
+  - `AuraPlaybackService.kt` inyecta `DefaultMediaSourceFactory(AuraStreamCache.createRoutingDataSourceFactory(...))` y `DefaultLoadControl` (buffer hasta 180 s).
+  - Los URIs locales (`content://`, `file://`) van directo a `DefaultDataSource` sin copiarse a caché; los URIs virtuales `aura-stream://track?id=<videoId>&u=<webpageUrl>` pasan por `CacheDataSource` (`SimpleCache` de 512 MB LRU en `cacheDir/aura_stream_cache`) envuelto alrededor de `ResolvingDataSource`, que resuelve el flujo directo y `http_headers` en `Dispatchers.IO` vía `yt-dlp` + QuickJS-ng mientras ExoPlayer reproduce y escribe en disco simultáneamente.
+  - La clave de caché `aura_yt_<videoId>` se deriva del URI lógico antes de `ResolvingDataSource`, garantizando aciertos aunque cambien las firmas temporales de la CDN.
 - **Importación privada**: Storage Access Framework (`AuraSafImporter.kt`) con permisos persistentes (`takePersistableUriPermission`) sobre archivos/carpetas elegidas por el usuario.
 - **Edición de metadatos y carátula WebP sin pérdida**:
   - `EditTrackMetadataScreen` + `AuraArtworkProcessor.kt` (`Dispatchers.IO` + `ImageDecoder` API 28+) para conversión a WebP sin pérdida en `filesDir/custom_artworks/`.
@@ -35,7 +39,7 @@ Aura Music ya integra Rust en producción mediante el crate `aura_yt_engine` (li
 ### Orquestación mínima y auto-actualizador en Python (`Chaquopy 17.2.0`)
 - **Archivo**: `aura_music/android/app/src/main/python/aura_yt_engine.py` (con tests unitarios en `aura_music/test/python/test_aura_yt_engine.py`).
 - **Dependencias base**: `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps`, `certifi` sobre Python `3.11`.
-- Selecciona flujos directos de audio (`m4a`/`opus`/`best`) reproducibles por Media3 ExoPlayer sin transcodificación FFmpeg y usa `js_runtimes={'quickjs': {'path': quickjs_path}}`.
+- Expone `search_explore` (búsqueda rápida `ytsearchN:` / playlists con `extract_flat`), `resolve_stream` (resolución de URL directa + headers para streaming progresivo en `AuraStreamCache`) y `download_audio` (descarga completa a `filesDir/aura_downloads/`), usando `js_runtimes={'quickjs': {'path': quickjs_path}}`.
 - **Auto-actualizador desde PyPI sin recompilar APK**:
   - Consulta la API JSON oficial de PyPI para `yt-dlp` y `yt-dlp-ejs`, descarga únicamente wheels Python puros (`py3-none-any.whl`), verifica su digest **SHA-256** y previene ataques **ZipSlip** antes de extraerlos en `filesDir/yt_dlp_updates/`.
   - Prioriza ese directorio en `sys.path[0]`, recarga `sys.modules` en caliente y permite restaurar las versiones originales incluidas en el APK en cualquier momento.
@@ -52,7 +56,7 @@ Aura Music integra procesamiento de audio en tiempo real mediante el crate `aura
 - **AudioProcessor (`AuraRustDspProcessor.kt`)**: Extiende `BaseAudioProcessor` y se inyecta en `DefaultAudioSink` mediante un `DefaultRenderersFactory` personalizado dentro de `AuraPlaybackService.kt`.
 - **Zero-copy JNI (`aura_dsp/src/lib.rs`)**: Procesa in-place el `DirectByteBuffer` de salida para formatos `PCM 16-bit` y `PCM 32-bit float` sin asignaciones de memoria en el hilo de audio.
 
-### Cadena DSP implementada y UI comprensible (`EqualizerScreen`)
+### Cadena DSP implementada y UI comprensible (`EqualizerScreen` y `Spatial8dScreen`)
 1. **Preamp** (`-6 dB` a `+6 dB` en UI, hasta `±12 dB` en motor).
 2. **Ecualizador Biquad IIR de 5 bandas en serie** (hasta 8 canales, con límite seguro de Nyquist al 45% de la tasa de muestreo):
    - `60 Hz` (*Low-Shelf*): **Subgraves** — vibración y cuerpo profundo.
@@ -60,8 +64,13 @@ Aura Music integra procesamiento de audio en tiempo real mediante el crate `aura
    - `910 Hz` (*Peaking EQ*): **Voces** — claridad de voz e instrumentos.
    - `3.6 kHz` (*Peaking EQ*): **Presencia** — definición, guitarras y ataque.
    - `12 kHz` (*High-Shelf*): **Brillo** — aire, platillos y detalle fino.
-3. **Limitador suave anti-distorsión (`soft-knee tanh`)**: Evita saturación digital o chasquidos cuando se refuerzan múltiples bandas.
-4. **Siguientes extensiones DSP planeadas**: Normalización ReplayGain / LUFS y análisis espectral FFT de baja latencia para visualizador en `FullPlayerScreen`.
+3. **Audio 8D orbital en Rust (sin reverb, activable con o sin ecualizador)**:
+   - **Detección automática de ruta de audio**: `AuraPlaybackService.kt` registra un `AudioDeviceCallback` en `AudioManager` y sincroniza `AuraRustDspBridge` al conectar o desconectar auriculares (cable, USB o Bluetooth).
+   - **Perfil Auriculares (`output_mode = 0`)**: crossfeed sutil, paneo orbital de potencia constante, micro-retardo interaural ITD (hasta `0.45 ms` con interpolación lineal en ring buffer) y filtro pasa-bajos 1-polo para sombra craneal y transición frente-atrás.
+   - **Perfil Altavoz (`output_mode = 1`, *mono-safe*)**: desactiva el ITD para evitar *comb-filtering* al sumarse en mono, aplica anchura Mid/Side controlada con paneo suave y un contorno espectral frente-atrás (~`2.1 kHz`) audible tanto en altavoces estéreo cercanos como en teléfonos mono.
+   - **Pantalla dedicada `Spatial8dScreen`**: selector de modo (*Automático*, *Forzar auriculares*, *Forzar altavoz*), velocidad de giro e intensidad, manteniendo íconos estáticos sin animaciones 3D.
+4. **Limitador suave anti-distorsión (`soft-knee tanh`)**: Evita saturación digital o chasquidos cuando se refuerzan múltiples bandas o se combina EQ con Audio 8D.
+5. **Siguientes extensiones DSP planeadas**: Reverb espacial opcional para Audio 8D, normalización ReplayGain / LUFS y análisis espectral FFT de baja latencia para visualizador en `FullPlayerScreen`.
 
 ---
 

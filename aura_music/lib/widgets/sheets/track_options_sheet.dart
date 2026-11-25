@@ -12,7 +12,9 @@ import 'package:provider/provider.dart';
 import '../../core/models/audio_track.dart';
 import '../../core/theme/aura_theme.dart';
 import '../../screens/equalizer/equalizer_screen.dart';
+import '../../screens/import/download_url_screen.dart';
 import '../../screens/metadata/edit_track_metadata_screen.dart';
+import '../../screens/spatial/spatial_8d_screen.dart';
 import '../../state/library_provider.dart';
 import '../../state/player_provider.dart';
 import '../artwork_view.dart';
@@ -93,19 +95,37 @@ class _TrackOptionsSheet extends StatelessWidget {
             const SizedBox(height: 14),
             Divider(color: c.border, height: 1),
             const SizedBox(height: 6),
-            _SheetActionRow(
-              icon: liveTrack.isFavorite
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              color: liveTrack.isFavorite ? c.accent : null,
-              label: liveTrack.isFavorite
-                  ? 'Quitar de favoritos'
-                  : 'Agregar a favoritos',
-              onTap: () {
-                library.toggleFavorite(liveTrack.id);
-                Navigator.pop(context);
-              },
-            ),
+            if (!liveTrack.isStreamTrack)
+              _SheetActionRow(
+                icon: liveTrack.isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: liveTrack.isFavorite ? c.accent : null,
+                label: liveTrack.isFavorite
+                    ? 'Quitar de favoritos'
+                    : 'Agregar a favoritos',
+                onTap: () {
+                  library.toggleFavorite(liveTrack.id);
+                  Navigator.pop(context);
+                },
+              )
+            else if (liveTrack.effectiveSourceUrl.isNotEmpty)
+              _SheetActionRow(
+                icon: Icons.download_for_offline_rounded,
+                color: c.accent,
+                label: 'Descargar en Biblioteca (offline)',
+                onTap: () {
+                  final navigator = Navigator.of(context);
+                  navigator.pop();
+                  navigator.push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DownloadUrlScreen(
+                        initialUrl: liveTrack.effectiveSourceUrl,
+                      ),
+                    ),
+                  );
+                },
+              ),
             _SheetActionRow(
               icon: Icons.playlist_play_rounded,
               label: 'Reproducir siguiente',
@@ -122,27 +142,29 @@ class _TrackOptionsSheet extends StatelessWidget {
                 Navigator.pop(context);
               },
             ),
-            _SheetActionRow(
-              icon: Icons.playlist_add_rounded,
-              label: 'Guardar en una playlist',
-              onTap: () {
-                Navigator.pop(context);
-                _showPlaylistPicker(context, liveTrack);
-              },
-            ),
-            _SheetActionRow(
-              icon: Icons.edit_rounded,
-              label: 'Editar metadatos y carátula',
-              onTap: () {
-                final navigator = Navigator.of(context);
-                navigator.pop();
-                navigator.push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => EditTrackMetadataScreen(track: liveTrack),
-                  ),
-                );
-              },
-            ),
+            if (!liveTrack.isStreamTrack) ...[
+              _SheetActionRow(
+                icon: Icons.playlist_add_rounded,
+                label: 'Guardar en una playlist',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showPlaylistPicker(context, liveTrack);
+                },
+              ),
+              _SheetActionRow(
+                icon: Icons.edit_rounded,
+                label: 'Editar metadatos y carátula',
+                onTap: () {
+                  final navigator = Navigator.of(context);
+                  navigator.pop();
+                  navigator.push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => EditTrackMetadataScreen(track: liveTrack),
+                    ),
+                  );
+                },
+              ),
+            ],
             _SheetActionRow(
               icon: Icons.tune_rounded,
               label: 'Ecualizador (Motor Rust DSP)',
@@ -157,6 +179,19 @@ class _TrackOptionsSheet extends StatelessWidget {
               },
             ),
             _SheetActionRow(
+              icon: Icons.surround_sound_rounded,
+              label: 'Audio 8D (Motor Rust DSP)',
+              onTap: () {
+                final navigator = Navigator.of(context);
+                navigator.pop();
+                navigator.push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const Spatial8dScreen(),
+                  ),
+                );
+              },
+            ),
+            _SheetActionRow(
               icon: Icons.graphic_eq_rounded,
               label: 'Ficha técnica (${liveTrack.technicalSummary})',
               onTap: () {
@@ -164,15 +199,16 @@ class _TrackOptionsSheet extends StatelessWidget {
                 _showTechnicalPopup(context, liveTrack);
               },
             ),
-            _SheetActionRow(
-              icon: Icons.delete_outline_rounded,
-              color: c.errorText,
-              label: 'Quitar de Aura Music',
-              onTap: () {
-                library.removeTrack(liveTrack.id);
-                Navigator.pop(context);
-              },
-            ),
+            if (!liveTrack.isStreamTrack)
+              _SheetActionRow(
+                icon: Icons.delete_outline_rounded,
+                color: c.errorText,
+                label: 'Quitar de Aura Music',
+                onTap: () {
+                  library.removeTrack(liveTrack.id);
+                  Navigator.pop(context);
+                },
+              ),
           ],
         ),
       ),

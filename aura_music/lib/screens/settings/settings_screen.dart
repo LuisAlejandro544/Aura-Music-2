@@ -99,6 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = context.watch<SettingsProvider>();
     final ytStatus = settings.engineStatus;
     final eqState = settings.equalizerState;
+    final s8dState = settings.spatial8dState;
 
     return Scaffold(
       backgroundColor: c.background,
@@ -563,6 +564,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : 'ABI'),
                   badgeHighlight: eqState?.enabled ?? false,
                 ),
+                const SizedBox(height: 10),
+                _VersionRow(
+                  label: 'Audio 8D',
+                  value: s8dState?.enabled == true
+                      ? 'Activo (${s8dState?.isHeadphonesActive == true ? "Auriculares" : "Altavoz"})'
+                      : 'Desactivado',
+                  badgeText: s8dState?.modeWireValue == 'auto'
+                      ? 'Auto'
+                      : (s8dState?.isHeadphonesActive == true
+                          ? 'Binaural'
+                          : 'Altavoz'),
+                  badgeHighlight: s8dState?.enabled ?? false,
+                ),
+                const SizedBox(height: 10),
+                _VersionRow(
+                  label: 'Caché streaming (Explorar)',
+                  value:
+                      '${settings.streamCacheStats.formattedUsed} · ${settings.streamCacheStats.cachedTracks} pistas',
+                  badgeText: '512 MB máx',
+                  badgeHighlight: settings.streamCacheStats.usedBytes > 0,
+                ),
+                if (settings.streamCacheStats.usedBytes > 0) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: settings.isBusy
+                          ? null
+                          : () => settings.clearStreamCache(),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: c.textPrimary,
+                        side: BorderSide(color: c.border),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: settings.isClearingStreamCache
+                          ? SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: c.accent,
+                              ),
+                            )
+                          : const Icon(Icons.cleaning_services_rounded,
+                              size: 17),
+                      label: const Text('Vaciar caché de streaming'),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
