@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/models/audio_track.dart';
 import '../../core/theme/aura_theme.dart';
+import '../../screens/metadata/edit_track_metadata_screen.dart';
 import '../../state/library_provider.dart';
 import '../../state/player_provider.dart';
 import '../artwork_view.dart';
@@ -125,6 +126,19 @@ class _TrackOptionsSheet extends StatelessWidget {
               onTap: () {
                 Navigator.pop(context);
                 _showPlaylistPicker(context, liveTrack);
+              },
+            ),
+            _SheetActionRow(
+              icon: Icons.edit_rounded,
+              label: 'Editar metadatos y carátula',
+              onTap: () {
+                final navigator = Navigator.of(context);
+                navigator.pop();
+                navigator.push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => EditTrackMetadataScreen(track: liveTrack),
+                  ),
+                );
               },
             ),
             _SheetActionRow(

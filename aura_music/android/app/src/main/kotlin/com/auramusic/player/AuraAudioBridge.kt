@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.File
 
 class AuraAudioBridge(
@@ -259,6 +260,81 @@ class AuraAudioBridge(
                     else -> Player.REPEAT_MODE_OFF
                 }
                 mediaController?.repeatMode = exoMode
+                result.success(true)
+            }
+
+            "convertImageToLosslessWebp" -> {
+                val sourcePath = call.argument<String>("sourcePath")
+                val trackId = call.argument<String>("trackId") ?: "track"
+                if (sourcePath.isNullOrBlank()) {
+                    result.error("INVALID_ARG", "Ruta de imagen inválida", null)
+                    return
+                }
+                bridgeScope.launch {
+                    runCatching {
+                        AuraArtworkProcessor.convertToLosslessWebp(
+                            context = activity.applicationContext,
+                            sourcePath = sourcePath,
+                            trackId = trackId
+                        )
+                    }.fold(
+                        onSuccess = { info -> result.success(info.toMap()) },
+                        onFailure = { err -> result.error("WEBP_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "commitCustomArtwork" -> {
+                val pendingPath = call.argument<String>("pendingPath")
+                val trackId = call.argument<String>("trackId") ?: "track"
+                if (pendingPath.isNullOrBlank()) {
+                    result.error("INVALID_ARG", "Ruta WebP pendiente inválida", null)
+                    return
+                }
+                bridgeScope.launch {
+                    runCatching {
+                        AuraArtworkProcessor.commitCustomArtwork(
+                            context = activity.applicationContext,
+                            pendingOrExistingPath = pendingPath,
+                            trackId = trackId
+                        )
+                    }.fold(
+                        onSuccess = { path -> result.success(path) },
+                        onFailure = { err -> result.error("ART_COMMIT_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "deleteCustomArtworks" -> {
+                val trackId = call.argument<String>("trackId")
+                if (trackId.isNullOrBlank()) {
+                    result.success(true)
+                    return
+                }
+                bridgeScope.launch {
+                    runCatching {
+                        AuraArtworkProcessor.deleteCustomArtworksForTrack(
+                            context = activity.applicationContext,
+                            trackId = trackId
+                        )
+                    }
+                    result.success(true)
+                }
+            }
+
+            "updateMediaItemMetadata" -> {
+                val trackMap = call.argument<Map<String, Any?>>("track")
+                val trackId = trackMap?.get("id") as? String
+                val controller = mediaController
+                if (trackMap != null && !trackId.isNullOrBlank() && controller != null) {
+                    val updatedItem = buildMediaItem(trackMap)
+                    val count = controller.mediaItemCount
+                    for (i in 0 until count) {
+                        if (controller.getMediaItemAt(i).mediaId == trackId) {
+                            controller.replaceMediaItem(i, updatedItem)
+                        }
+                    }
+                }
                 result.success(true)
             }
 

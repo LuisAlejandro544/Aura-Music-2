@@ -33,6 +33,8 @@ class AudioTrack {
     this.bitrateKbps = 0,
     this.sampleRateHz = 0,
     this.artworkPath,
+    this.originalArtworkPath,
+    this.hasCustomMetadata = false,
     this.isFavorite = false,
     this.importedAtMs = 0,
     this.lastPlayedAtMs = 0,
@@ -50,12 +52,16 @@ class AudioTrack {
   final int bitrateKbps;
   final int sampleRateHz;
   final String? artworkPath;
+  final String? originalArtworkPath;
+  final bool hasCustomMetadata;
   final bool isFavorite;
   final int importedAtMs;
   final int lastPlayedAtMs;
   final int playCount;
 
   Duration get duration => Duration(milliseconds: durationMs);
+  bool get hasCustomWebpArtwork =>
+      (artworkPath ?? '').toLowerCase().endsWith('.webp');
 
   String get formatBadge {
     final lower = mimeType.toLowerCase();
@@ -84,23 +90,35 @@ class AudioTrack {
   }
 
   AudioTrack copyWith({
+    String? title,
+    String? artist,
+    String? album,
+    String? folderName,
     bool? isFavorite,
     int? lastPlayedAtMs,
     int? playCount,
     String? artworkPath,
+    bool clearArtworkPath = false,
+    String? originalArtworkPath,
+    bool clearOriginalArtworkPath = false,
+    bool? hasCustomMetadata,
   }) {
     return AudioTrack(
       id: id,
       uri: uri,
-      title: title,
-      artist: artist,
-      album: album,
-      folderName: folderName,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      folderName: folderName ?? this.folderName,
       durationMs: durationMs,
       mimeType: mimeType,
       bitrateKbps: bitrateKbps,
       sampleRateHz: sampleRateHz,
-      artworkPath: artworkPath ?? this.artworkPath,
+      artworkPath: clearArtworkPath ? null : (artworkPath ?? this.artworkPath),
+      originalArtworkPath: clearOriginalArtworkPath
+          ? null
+          : (originalArtworkPath ?? this.originalArtworkPath),
+      hasCustomMetadata: hasCustomMetadata ?? this.hasCustomMetadata,
       isFavorite: isFavorite ?? this.isFavorite,
       importedAtMs: importedAtMs,
       lastPlayedAtMs: lastPlayedAtMs ?? this.lastPlayedAtMs,
@@ -120,6 +138,8 @@ class AudioTrack {
         'bitrateKbps': bitrateKbps,
         'sampleRateHz': sampleRateHz,
         'artworkPath': artworkPath,
+        'originalArtworkPath': originalArtworkPath,
+        'hasCustomMetadata': hasCustomMetadata ? 1 : 0,
         'isFavorite': isFavorite ? 1 : 0,
         'importedAtMs': importedAtMs,
         'lastPlayedAtMs': lastPlayedAtMs,
@@ -127,6 +147,8 @@ class AudioTrack {
       };
 
   factory AudioTrack.fromMap(Map<String, dynamic> map) {
+    final art = map['artworkPath'] as String?;
+    final origArt = map['originalArtworkPath'] as String?;
     return AudioTrack(
       id: (map['id'] ?? '').toString(),
       uri: (map['uri'] ?? '').toString(),
@@ -138,7 +160,10 @@ class AudioTrack {
       mimeType: (map['mimeType'] ?? 'audio/mpeg').toString(),
       bitrateKbps: (map['bitrateKbps'] as num?)?.toInt() ?? 0,
       sampleRateHz: (map['sampleRateHz'] as num?)?.toInt() ?? 0,
-      artworkPath: map['artworkPath'] as String?,
+      artworkPath: art,
+      originalArtworkPath: origArt ?? art,
+      hasCustomMetadata:
+          (map['hasCustomMetadata'] == true) || (map['hasCustomMetadata'] == 1),
       isFavorite: (map['isFavorite'] == true) || (map['isFavorite'] == 1),
       importedAtMs: (map['importedAtMs'] as num?)?.toInt() ?? 0,
       lastPlayedAtMs: (map['lastPlayedAtMs'] as num?)?.toInt() ?? 0,
@@ -204,4 +229,29 @@ class NativePlaybackEvent {
   final int durationMs;
   final bool shuffleEnabled;
   final AuraRepeatMode repeatMode;
+}
+
+@immutable
+class LosslessWebpResult {
+  const LosslessWebpResult({
+    required this.webpPath,
+    required this.byteSize,
+    required this.width,
+    required this.height,
+    required this.isLossless,
+  });
+
+  final String webpPath;
+  final int byteSize;
+  final int width;
+  final int height;
+  final bool isLossless;
+
+  String get formattedSize {
+    if (byteSize < 1024) return '$byteSize B';
+    if (byteSize < 1024 * 1024) {
+      return '${(byteSize / 1024).toStringAsFixed(1)} KB';
+    }
+    return '${(byteSize / (1024 * 1024)).toStringAsFixed(2)} MB';
+  }
 }

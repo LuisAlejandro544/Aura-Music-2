@@ -49,15 +49,19 @@ class _QueueSheet extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Row(
                 children: [
-                  const Text(
-                    'Cola de reproducción',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AuraColors.textPrimary,
+                  const Expanded(
+                    child: Text(
+                      'Cola de reproducción',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AuraColors.textPrimary,
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(

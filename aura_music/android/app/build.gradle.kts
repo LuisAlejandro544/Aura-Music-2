@@ -36,9 +36,15 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // Soporte explícito para dispositivos móviles de 32 bits y 64 bits
-        ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        // Soporte explícito para 32 bits y 64 bits en APK universal; cuando se
+        // compila con --split-per-abi, Flutter configura splits.abi y AGP no
+        // permite combinarlo simultáneamente con defaultConfig.ndk.abiFilters.
+        val isSplitPerAbi =
+            project.findProperty("split-per-abi")?.toString()?.toBoolean() == true
+        if (!isSplitPerAbi) {
+            ndk {
+                abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+            }
         }
     }
 

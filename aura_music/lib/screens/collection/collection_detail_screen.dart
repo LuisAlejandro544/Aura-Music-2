@@ -36,7 +36,7 @@ class CollectionDetailScreen extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
-            expandedHeight: 270,
+            expandedHeight: 284,
             pinned: true,
             backgroundColor: AuraColors.background,
             flexibleSpace: FlexibleSpaceBar(
@@ -78,11 +78,16 @@ class CollectionDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${collection.subtitle} · ${formatCollectionSummary(collection.tracks.length, collection.totalDuration)}',
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          color: AuraColors.textSecondary,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          '${collection.subtitle} · ${formatCollectionSummary(collection.tracks.length, collection.totalDuration)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            color: AuraColors.textSecondary,
+                          ),
                         ),
                       ),
                     ],

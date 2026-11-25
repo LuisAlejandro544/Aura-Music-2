@@ -10,11 +10,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/audio/exoplayer_bridge.dart';
 import 'core/storage/library_database.dart';
 import 'core/theme/aura_theme.dart';
 import 'screens/app_shell.dart';
+import 'screens/permissions/permissions_screen.dart';
 import 'state/library_provider.dart';
 import 'state/player_provider.dart';
 
@@ -83,8 +86,90 @@ class _AuraMusicAppState extends State<AuraMusicApp> {
         title: 'Aura Music',
         debugShowCheckedModeBanner: false,
         theme: AuraTheme.buildLightTheme(),
-        home: const AppShell(),
+        home: const _PermissionsEntryGate(),
       ),
+    );
+  }
+}
+
+/// Compuerta inicial que verifica los permisos requeridos antes de mostrar
+/// AppShell. Si falta algún permiso en tiempo de ejecución (o es el primer
+/// arranque), muestra PermissionsScreen antes de entrar a la app.
+class _PermissionsEntryGate extends StatefulWidget {
+  const _PermissionsEntryGate();
+
+  @override
+  State<_PermissionsEntryGate> createState() => _PermissionsEntryGateState();
+}
+
+class _PermissionsEntryGateState extends State<_PermissionsEntryGate> {
+  static const _prefGateSeen = 'permissions_gate_seen';
+  static const _prefNotifSkipped = 'permissions_notif_skipped';
+
+  bool _loading = true;
+  bool _canEnterApp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkGateState();
+  }
+
+  Future<void> _checkGateState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final gateSeen = prefs.getBool(_prefGateSeen) ?? false;
+      final skippedNotif = prefs.getBool(_prefNotifSkipped) ?? false;
+
+      PermissionStatus notifStatus = PermissionStatus.granted;
+      try {
+        notifStatus = await Permission.notification.status;
+      } catch (_) {
+        notifStatus = PermissionStatus.granted;
+      }
+
+      final ready = gateSeen && (notifStatus.isGranted || skippedNotif);
+      if (!mounted) return;
+      setState(() {
+        _canEnterApp = ready;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _canEnterApp = true;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _completeGate({required bool skippedNotifications}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefGateSeen, true);
+      await prefs.setBool(_prefNotifSkipped, skippedNotifications);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _canEnterApp = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: AuraColors.background,
+        body: SizedBox.shrink(),
+      );
+    }
+
+    if (_canEnterApp) {
+      return const AppShell();
+    }
+
+    return PermissionsScreen(
+      onEnterApp: () => _completeGate(skippedNotifications: false),
+      onContinueWithoutNotifications: () =>
+          _completeGate(skippedNotifications: true),
     );
   }
 }

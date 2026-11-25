@@ -13,7 +13,7 @@ import '../models/audio_track.dart';
 
 class LibraryDatabase {
   static const _dbName = 'aura_music_library.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   Database? _db;
 
@@ -38,6 +38,8 @@ class LibraryDatabase {
             bitrateKbps INTEGER NOT NULL DEFAULT 0,
             sampleRateHz INTEGER NOT NULL DEFAULT 0,
             artworkPath TEXT,
+            originalArtworkPath TEXT,
+            hasCustomMetadata INTEGER NOT NULL DEFAULT 0,
             isFavorite INTEGER NOT NULL DEFAULT 0,
             importedAtMs INTEGER NOT NULL DEFAULT 0,
             lastPlayedAtMs INTEGER NOT NULL DEFAULT 0,
@@ -61,6 +63,25 @@ class LibraryDatabase {
             PRIMARY KEY (playlistId, trackId)
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          final info = await db.rawQuery('PRAGMA table_info(tracks)');
+          final cols = info.map((r) => r['name'] as String).toSet();
+          if (!cols.contains('originalArtworkPath')) {
+            await db.execute(
+              'ALTER TABLE tracks ADD COLUMN originalArtworkPath TEXT',
+            );
+            await db.execute(
+              'UPDATE tracks SET originalArtworkPath = artworkPath WHERE originalArtworkPath IS NULL',
+            );
+          }
+          if (!cols.contains('hasCustomMetadata')) {
+            await db.execute(
+              'ALTER TABLE tracks ADD COLUMN hasCustomMetadata INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+        }
       },
     );
     return _db!;
@@ -93,6 +114,24 @@ class LibraryDatabase {
       {'isFavorite': isFavorite ? 1 : 0},
       where: 'id = ?',
       whereArgs: [trackId],
+    );
+  }
+
+  Future<void> updateTrackMetadata(AudioTrack track) async {
+    final db = await _open();
+    await db.update(
+      'tracks',
+      {
+        'title': track.title,
+        'artist': track.artist,
+        'album': track.album,
+        'folderName': track.folderName,
+        'artworkPath': track.artworkPath,
+        'originalArtworkPath': track.originalArtworkPath,
+        'hasCustomMetadata': track.hasCustomMetadata ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [track.id],
     );
   }
 

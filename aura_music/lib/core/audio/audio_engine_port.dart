@@ -43,5 +43,20 @@ abstract class AudioEnginePort {
   Future<void> setShuffle(bool enabled);
   Future<void> setAuraRepeatMode(AuraRepeatMode mode);
 
+  /// Conversión nativa a WebP sin pérdida y actualización de metadatos en cola
+  Future<LosslessWebpResult> convertImageToLosslessWebp({
+    required String sourcePath,
+    required String trackId,
+  });
+
+  Future<String> commitCustomArtwork({
+    required String pendingPath,
+    required String trackId,
+  });
+
+  Future<void> deleteCustomArtworks(String trackId);
+
+  Future<void> updateMediaItemMetadata(AudioTrack track);
+
   void dispose();
 }

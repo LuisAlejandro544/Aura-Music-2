@@ -59,48 +59,59 @@ class _LibraryScreenState extends State<LibraryScreen> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
+            padding: const EdgeInsets.fromLTRB(20, 16, 14, 12),
             child: Row(
               children: [
-                const Text(
-                  'Tu Biblioteca',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.7,
-                    color: AuraColors.textPrimary,
+                const Expanded(
+                  child: Text(
+                    'Tu Biblioteca',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.7,
+                      color: AuraColors.textPrimary,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 IconButton(
                   onPressed: () => _showCreatePlaylistDialog(context),
                   icon: const Icon(Icons.playlist_add_rounded),
                   tooltip: 'Nueva playlist',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
-                PopupMenuButton<LibrarySortBy>(
-                  initialValue: library.sortBy,
-                  icon: const Icon(Icons.sort_rounded),
-                  tooltip: 'Ordenar canciones',
-                  onSelected: library.setSortBy,
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: LibrarySortBy.recent,
-                      child: Text('Recién importadas'),
-                    ),
-                    PopupMenuItem(
-                      value: LibrarySortBy.title,
-                      child: Text('Por título (A-Z)'),
-                    ),
-                    PopupMenuItem(
-                      value: LibrarySortBy.artist,
-                      child: Text('Por artista'),
-                    ),
-                    PopupMenuItem(
-                      value: LibrarySortBy.duration,
-                      child: Text('Por duración'),
-                    ),
-                  ],
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: PopupMenuButton<LibrarySortBy>(
+                    initialValue: library.sortBy,
+                    icon: const Icon(Icons.sort_rounded),
+                    tooltip: 'Ordenar canciones',
+                    padding: EdgeInsets.zero,
+                    onSelected: library.setSortBy,
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: LibrarySortBy.recent,
+                        child: Text('Recién importadas'),
+                      ),
+                      PopupMenuItem(
+                        value: LibrarySortBy.title,
+                        child: Text('Por título (A-Z)'),
+                      ),
+                      PopupMenuItem(
+                        value: LibrarySortBy.artist,
+                        child: Text('Por artista'),
+                      ),
+                      PopupMenuItem(
+                        value: LibrarySortBy.duration,
+                        child: Text('Por duración'),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 4),
                 FilledButton.icon(
                   onPressed: () => showImportSourceSheet(context),
                   style: FilledButton.styleFrom(

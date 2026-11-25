@@ -180,6 +180,67 @@ class ExoPlayerBridge implements AudioEnginePort {
       );
 
   @override
+  Future<LosslessWebpResult> convertImageToLosslessWebp({
+    required String sourcePath,
+    required String trackId,
+  }) async {
+    final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+      'convertImageToLosslessWebp',
+      {
+        'sourcePath': sourcePath,
+        'trackId': trackId,
+      },
+    );
+    final map = raw ?? const <String, dynamic>{};
+    return LosslessWebpResult(
+      webpPath: (map['webpPath'] ?? '').toString(),
+      byteSize: (map['byteSize'] as num?)?.toInt() ?? 0,
+      width: (map['width'] as num?)?.toInt() ?? 0,
+      height: (map['height'] as num?)?.toInt() ?? 0,
+      isLossless: map['isLossless'] == true,
+    );
+  }
+
+  @override
+  Future<String> commitCustomArtwork({
+    required String pendingPath,
+    required String trackId,
+  }) async {
+    final result = await _methodChannel.invokeMethod<String>(
+      'commitCustomArtwork',
+      {
+        'pendingPath': pendingPath,
+        'trackId': trackId,
+      },
+    );
+    return result ?? pendingPath;
+  }
+
+  @override
+  Future<void> deleteCustomArtworks(String trackId) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'deleteCustomArtworks',
+        {'trackId': trackId},
+      );
+    } on MissingPluginException {
+      // Ignorado fuera de Android nativo
+    }
+  }
+
+  @override
+  Future<void> updateMediaItemMetadata(AudioTrack track) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'updateMediaItemMetadata',
+        {'track': track.toMap()},
+      );
+    } on MissingPluginException {
+      // Ignorado fuera de Android nativo
+    }
+  }
+
+  @override
   void dispose() {
     _eventSubscription?.cancel();
     _playbackController.close();

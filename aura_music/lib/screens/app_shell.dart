@@ -79,54 +79,130 @@ class _AppShellState extends State<AppShell> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 MiniPlayer(onExpand: _openFullPlayer),
-                Container(
-                  decoration: const BoxDecoration(
-                    color: AuraColors.surface,
-                    border: Border(
-                      top: BorderSide(color: AuraColors.border, width: 1),
-                    ),
-                  ),
-                  child: NavigationBar(
-                    height: 66,
-                    backgroundColor: AuraColors.surface,
-                    elevation: 0,
-                    indicatorColor: AuraColors.accentSoft,
-                    selectedIndex: _currentTab,
-                    onDestinationSelected: (idx) {
-                      setState(() => _currentTab = idx);
-                    },
-                    destinations: const [
-                      NavigationDestination(
-                        icon: Icon(Icons.home_outlined),
-                        selectedIcon: Icon(
-                          Icons.home_rounded,
-                          color: AuraColors.accent,
-                        ),
-                        label: 'Inicio',
-                      ),
-                      NavigationDestination(
-                        icon: Icon(Icons.search_rounded),
-                        selectedIcon: Icon(
-                          Icons.search_rounded,
-                          color: AuraColors.accent,
-                        ),
-                        label: 'Buscar',
-                      ),
-                      NavigationDestination(
-                        icon: Icon(Icons.library_music_outlined),
-                        selectedIcon: Icon(
-                          Icons.library_music_rounded,
-                          color: AuraColors.accent,
-                        ),
-                        label: 'Biblioteca',
-                      ),
-                    ],
-                  ),
+                _AuraBottomBar(
+                  selectedIndex: _currentTab,
+                  onDestinationSelected: (idx) {
+                    setState(() => _currentTab = idx);
+                  },
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Barra inferior personalizada que conserva exactamente la estética de Aura
+/// Music (fondo avena cálido, borde superior sutil y píldora coral suave) sin
+/// el espacio vacío superior que añadía NavigationBar en algunas densidades.
+class _AuraBottomBar extends StatelessWidget {
+  const _AuraBottomBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AuraColors.surface,
+        border: Border(
+          top: BorderSide(color: AuraColors.border, width: 1),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              _AuraNavItem(
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home_rounded,
+                label: 'Inicio',
+                selected: selectedIndex == 0,
+                onTap: () => onDestinationSelected(0),
+              ),
+              _AuraNavItem(
+                icon: Icons.search_rounded,
+                selectedIcon: Icons.search_rounded,
+                label: 'Buscar',
+                selected: selectedIndex == 1,
+                onTap: () => onDestinationSelected(1),
+              ),
+              _AuraNavItem(
+                icon: Icons.library_music_outlined,
+                selectedIcon: Icons.library_music_rounded,
+                label: 'Biblioteca',
+                selected: selectedIndex == 2,
+                onTap: () => onDestinationSelected(2),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuraNavItem extends StatelessWidget {
+  const _AuraNavItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        splashColor: AuraColors.accent.withValues(alpha: 0.08),
+        highlightColor: Colors.transparent,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: 60,
+              height: 30,
+              decoration: BoxDecoration(
+                color: selected ? AuraColors.accentSoft : Colors.transparent,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(
+                selected ? selectedIcon : icon,
+                size: 22,
+                color: selected ? AuraColors.accent : AuraColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: AuraColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

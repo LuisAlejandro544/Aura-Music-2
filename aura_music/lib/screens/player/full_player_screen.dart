@@ -172,12 +172,22 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                           transform: Matrix4.translationValues(_artDragX * 0.65, 0, 0),
                           child: Hero(
                             tag: 'aura_current_artwork',
-                            child: ArtworkView(
-                              artworkPath: track.artworkPath,
-                              seed: '${track.album}_${track.title}',
-                              size: MediaQuery.sizeOf(context).width - 64,
-                              borderRadius: 28,
-                              showShadow: true,
+                            child: Builder(
+                              builder: (context) {
+                                final screenSize = MediaQuery.sizeOf(context);
+                                final widthCap = screenSize.width - 64;
+                                final heightCap = screenSize.height * 0.39;
+                                final rawSide =
+                                    widthCap < heightCap ? widthCap : heightCap;
+                                final maxSide = rawSide.clamp(120.0, 380.0);
+                                return ArtworkView(
+                                  artworkPath: track.artworkPath,
+                                  seed: '${track.album}_${track.title}',
+                                  size: maxSide,
+                                  borderRadius: 28,
+                                  showShadow: true,
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -397,50 +407,56 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                       padding: const EdgeInsets.only(bottom: 14),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 7,
-                            ),
-                            decoration: BoxDecoration(
-                              color: track.isLossless
-                                  ? AuraColors.sageSoft
-                                  : AuraColors.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AuraColors.border),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.graphic_eq_rounded,
-                                  size: 15,
-                                  color: track.isLossless
-                                      ? AuraColors.sage
-                                      : AuraColors.textPrimary,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${track.technicalSummary} · ExoPlayer',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: track.isLossless
+                                    ? AuraColors.sageSoft
+                                    : AuraColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AuraColors.border),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.graphic_eq_rounded,
+                                    size: 15,
                                     color: track.isLossless
                                         ? AuraColors.sage
                                         : AuraColors.textPrimary,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      '${track.technicalSummary} · ExoPlayer',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: track.isLossless
+                                            ? AuraColors.sage
+                                            : AuraColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 10),
                           TextButton.icon(
                             onPressed: () => showQueueSheet(context),
                             style: TextButton.styleFrom(
                               foregroundColor: AuraColors.textPrimary,
                               backgroundColor: AuraColors.surface,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
+                                horizontal: 12,
                                 vertical: 8,
                               ),
                               shape: RoundedRectangleBorder(
@@ -450,6 +466,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                             icon: const Icon(Icons.queue_music_rounded, size: 18),
                             label: Text(
                               'Cola (${player.queue.length})',
+                              maxLines: 1,
                               style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ),

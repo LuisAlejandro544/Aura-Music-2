@@ -9,9 +9,10 @@
 #   4. Si detecta código Rust (`Cargo.toml`) en el proyecto, instala y cachea
 #      automáticamente el toolchain de Rust (32 bits armv7 + 64 bits arm64),
 #      cargo-ndk y las dependencias de Cargo (`cargo fetch`).
-#   5. Descarga las dependencias de Flutter (`flutter pub get`) y compila
-#      exclusivamente el APK en modo Debug (`app-debug.apk`) para 32 y 64 bits.
-#   6. Sube el `app-debug.apk` como Artifact para descargarlo directo al teléfono.
+#   5. Descarga las dependencias de Flutter (`flutter pub get`) y compila el APK
+#      en modo Debug separado por arquitectura (`--split-per-abi`: 32 y 64 bits).
+#   6. Sube dos Artifacts separados (uno para `arm64-v8a` 64 bits y otro para
+#      `armeabi-v7a` 32 bits) para descargar solo el que necesites en tu teléfono.
 # ==============================================================================
 
 name: Compilar APK Debug (Aura Music)
@@ -178,18 +179,28 @@ jobs:
           fi
           chmod +x android/gradlew
 
-      # 10. Compilar estrictamente en modo APK Debug (32 bits + 64 bits)
-      - name: Compilar APK Debug
+      # 10. Compilar en modo APK Debug separado por arquitectura (32 bits y 64 bits)
+      - name: Compilar APKs Debug por arquitectura
         working-directory: ${{ steps.detect.outputs.app_dir }}
         shell: bash
         run: |
-          flutter build apk --debug --target-platform android-arm,android-arm64
+          flutter build apk --debug --split-per-abi --target-platform android-arm,android-arm64
+          ls -lh build/app/outputs/flutter-apk/
 
-      # 11. Subir el APK Debug compilado para descargarlo desde GitHub
-      - name: Publicar Artifact app-debug.apk
+      # 11. Subir un Artifact individual para 64 bits (arm64-v8a)
+      - name: Publicar Artifact 64 bits (arm64-v8a)
         uses: actions/upload-artifact@v4
         with:
-          name: aura-music-debug-apk
-          path: ${{ steps.detect.outputs.app_dir }}/build/app/outputs/flutter-apk/app-debug.apk
+          name: aura-music-debug-arm64-v8a
+          path: ${{ steps.detect.outputs.app_dir }}/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # 12. Subir un Artifact individual para 32 bits (armeabi-v7a)
+      - name: Publicar Artifact 32 bits (armeabi-v7a)
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-music-debug-armeabi-v7a
+          path: ${{ steps.detect.outputs.app_dir }}/build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
           if-no-files-found: error
           retention-days: 14

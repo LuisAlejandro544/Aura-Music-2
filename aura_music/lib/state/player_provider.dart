@@ -260,6 +260,21 @@ class PlayerProvider extends ChangeNotifier {
     await _engine.setAuraRepeatMode(_repeatMode);
   }
 
+  Future<void> syncUpdatedTrack(AudioTrack updated) async {
+    bool touched = false;
+    _queue = _queue.map((item) {
+      if (item.id == updated.id) {
+        touched = true;
+        return updated;
+      }
+      return item;
+    }).toList();
+    if (touched) {
+      notifyListeners();
+      await _engine.updateMediaItemMetadata(updated);
+    }
+  }
+
   Future<void> _persistLastSession(String trackId, int posMs) async {
     try {
       final prefs = await SharedPreferences.getInstance();

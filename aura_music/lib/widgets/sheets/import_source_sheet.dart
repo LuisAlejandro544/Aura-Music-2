@@ -84,13 +84,17 @@ class _ImportSourceSheet extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Text(
-                          library.importTotal > 0
-                              ? 'Leyendo metadatos (${library.importProcessed}/${library.importTotal})...'
-                              : 'Abriendo selector del sistema...',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: AuraColors.textPrimary,
+                        Expanded(
+                          child: Text(
+                            library.importTotal > 0
+                                ? 'Leyendo metadatos (${library.importProcessed}/${library.importTotal})...'
+                                : 'Abriendo selector del sistema...',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AuraColors.textPrimary,
+                            ),
                           ),
                         ),
                       ],

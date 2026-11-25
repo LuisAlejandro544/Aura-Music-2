@@ -203,11 +203,26 @@ class LibraryProvider extends ChangeNotifier {
       final imported = await picker();
       if (imported.isEmpty) return 0;
 
-      // Conserva estado de favorito/conteo si la pista ya estaba importada
+      // Conserva estado y ediciones personalizadas si la pista ya estaba importada
       final existingById = {for (final t in _tracks) t.id: t};
       final merged = imported.map((t) {
         final prev = existingById[t.id];
         if (prev == null) return t;
+        if (prev.hasCustomMetadata) {
+          return t.copyWith(
+            title: prev.title,
+            artist: prev.artist,
+            album: prev.album,
+            folderName: prev.folderName,
+            artworkPath: prev.artworkPath,
+            clearArtworkPath: prev.artworkPath == null,
+            originalArtworkPath: t.artworkPath ?? prev.originalArtworkPath,
+            hasCustomMetadata: true,
+            isFavorite: prev.isFavorite,
+            lastPlayedAtMs: prev.lastPlayedAtMs,
+            playCount: prev.playCount,
+          );
+        }
         return t.copyWith(
           isFavorite: prev.isFavorite,
           lastPlayedAtMs: prev.lastPlayedAtMs,
@@ -249,9 +264,65 @@ class LibraryProvider extends ChangeNotifier {
     await _database.recordPlayback(trackId);
   }
 
+  Future<LosslessWebpResult> convertGalleryImageToLosslessWebp({
+    required String sourcePath,
+    required String trackId,
+  }) {
+    return _engine.convertImageToLosslessWebp(
+      sourcePath: sourcePath,
+      trackId: trackId,
+    );
+  }
+
+  Future<AudioTrack> updateTrackMetadata({
+    required AudioTrack track,
+    required String title,
+    required String artist,
+    required String album,
+    required String folderName,
+    String? pendingWebpPath,
+    bool restoreOriginalArtwork = false,
+  }) async {
+    String? nextArtworkPath = track.artworkPath;
+    bool clearArtwork = false;
+
+    if (restoreOriginalArtwork) {
+      await _engine.deleteCustomArtworks(track.id);
+      nextArtworkPath = track.originalArtworkPath;
+      clearArtwork = nextArtworkPath == null;
+    } else if (pendingWebpPath != null && pendingWebpPath.isNotEmpty) {
+      nextArtworkPath = await _engine.commitCustomArtwork(
+        pendingPath: pendingWebpPath,
+        trackId: track.id,
+      );
+    }
+
+    final updated = track.copyWith(
+      title: title.trim(),
+      artist: artist.trim().isEmpty ? 'Artista desconocido' : artist.trim(),
+      album: album.trim().isEmpty ? 'Sin álbum' : album.trim(),
+      folderName:
+          folderName.trim().isEmpty ? 'Música Importada' : folderName.trim(),
+      artworkPath: nextArtworkPath,
+      clearArtworkPath: clearArtwork,
+      originalArtworkPath: track.originalArtworkPath ?? track.artworkPath,
+      hasCustomMetadata: true,
+    );
+
+    final index = _tracks.indexWhere((t) => t.id == updated.id);
+    if (index >= 0) {
+      _tracks[index] = updated;
+    }
+    notifyListeners();
+
+    await _database.updateTrackMetadata(updated);
+    return updated;
+  }
+
   Future<void> removeTrack(String trackId) async {
     _tracks.removeWhere((t) => t.id == trackId);
     notifyListeners();
+    await _engine.deleteCustomArtworks(trackId);
     await _database.deleteTrack(trackId);
     _playlists = await _database.getPlaylists();
     notifyListeners();
