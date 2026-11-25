@@ -69,9 +69,9 @@ class ExoPlayerBridge implements AudioEnginePort {
       case 'playbackState':
         final repeatStr = (map['repeatMode'] as String?) ?? 'off';
         final repeatMode = switch (repeatStr) {
-          'all' => RepeatMode.all,
-          'one' => RepeatMode.one,
-          _ => RepeatMode.off,
+          'all' => AuraRepeatMode.all,
+          'one' => AuraRepeatMode.one,
+          _ => AuraRepeatMode.off,
         };
         _playbackController.add(
           NativePlaybackEvent(
@@ -173,7 +173,7 @@ class ExoPlayerBridge implements AudioEnginePort {
       );
 
   @override
-  Future<void> setRepeatMode(RepeatMode mode) =>
+  Future<void> setAuraRepeatMode(AuraRepeatMode mode) =>
       _methodChannel.invokeMethod<void>(
         'setRepeatMode',
         {'mode': mode.name},

@@ -37,7 +37,7 @@ class PlayerProvider extends ChangeNotifier {
   int _currentIndex = 0;
   bool _isPlaying = false;
   bool _shuffleEnabled = false;
-  RepeatMode _repeatMode = RepeatMode.off;
+  AuraRepeatMode _repeatMode = AuraRepeatMode.off;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   String? _errorMessage;
@@ -54,7 +54,7 @@ class PlayerProvider extends ChangeNotifier {
   bool get hasActiveTrack => currentTrack != null;
   bool get isPlaying => _isPlaying;
   bool get shuffleEnabled => _shuffleEnabled;
-  RepeatMode get repeatMode => _repeatMode;
+  AuraRepeatMode get repeatMode => _repeatMode;
   Duration get position => _position;
   Duration get duration =>
       _duration.inMilliseconds > 0 ? _duration : (currentTrack?.duration ?? Duration.zero);
@@ -250,14 +250,14 @@ class PlayerProvider extends ChangeNotifier {
     await _engine.setShuffle(_shuffleEnabled);
   }
 
-  Future<void> cycleRepeatMode() async {
+  Future<void> cycleAuraRepeatMode() async {
     _repeatMode = switch (_repeatMode) {
-      RepeatMode.off => RepeatMode.all,
-      RepeatMode.all => RepeatMode.one,
-      RepeatMode.one => RepeatMode.off,
+      AuraRepeatMode.off => AuraRepeatMode.all,
+      AuraRepeatMode.all => AuraRepeatMode.one,
+      AuraRepeatMode.one => AuraRepeatMode.off,
     };
     notifyListeners();
-    await _engine.setRepeatMode(_repeatMode);
+    await _engine.setAuraRepeatMode(_repeatMode);
   }
 
   Future<void> _persistLastSession(String trackId, int posMs) async {

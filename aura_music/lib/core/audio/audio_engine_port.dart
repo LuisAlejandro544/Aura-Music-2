@@ -41,7 +41,7 @@ abstract class AudioEnginePort {
   Future<void> skipPrevious();
   Future<void> skipToIndex(int index);
   Future<void> setShuffle(bool enabled);
-  Future<void> setRepeatMode(RepeatMode mode);
+  Future<void> setAuraRepeatMode(AuraRepeatMode mode);
 
   void dispose();
 }

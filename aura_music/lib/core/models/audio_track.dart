@@ -9,7 +9,7 @@
 
 import 'package:flutter/foundation.dart';
 
-enum RepeatMode { off, all, one }
+enum AuraRepeatMode { off, all, one }
 
 enum CollectionType { album, folder, playlist }
 
@@ -203,5 +203,5 @@ class NativePlaybackEvent {
   final int positionMs;
   final int durationMs;
   final bool shuffleEnabled;
-  final RepeatMode repeatMode;
+  final AuraRepeatMode repeatMode;
 }

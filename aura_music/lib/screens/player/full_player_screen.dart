@@ -375,13 +375,13 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         IconButton(
                           onPressed: () {
                             HapticFeedback.selectionClick();
-                            player.cycleRepeatMode();
+                            player.cycleAuraRepeatMode();
                           },
                           icon: Icon(
-                            player.repeatMode == RepeatMode.one
+                            player.repeatMode == AuraRepeatMode.one
                                 ? Icons.repeat_one_rounded
                                 : Icons.repeat_rounded,
-                            color: player.repeatMode != RepeatMode.off
+                            color: player.repeatMode != AuraRepeatMode.off
                                 ? AuraColors.accent
                                 : AuraColors.textSecondary,
                           ),
