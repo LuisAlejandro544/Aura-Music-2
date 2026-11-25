@@ -81,11 +81,17 @@ android {
     }
 
     sourceSets {
-        getByName("debug").jniLibs.directories.add(
-            layout.buildDirectory.dir("rustJniLibs/debug").get().asFile.absolutePath
+        getByName("debug").jniLibs.directories.addAll(
+            listOf(
+                layout.buildDirectory.dir("rustJniLibs/debug").get().asFile.absolutePath,
+                layout.buildDirectory.dir("rustDspJniLibs/debug").get().asFile.absolutePath
+            )
         )
-        getByName("release").jniLibs.directories.add(
-            layout.buildDirectory.dir("rustJniLibs/release").get().asFile.absolutePath
+        getByName("release").jniLibs.directories.addAll(
+            listOf(
+                layout.buildDirectory.dir("rustJniLibs/release").get().asFile.absolutePath,
+                layout.buildDirectory.dir("rustDspJniLibs/release").get().asFile.absolutePath
+            )
         )
     }
 
@@ -186,9 +192,10 @@ flutter {
 }
 
 // =============================================================================
-// Compilación nativa de Rust (`aura_yt_engine`) con `cargo-ndk` para 32 y 64 bits
+// Compilación nativa de Rust (`aura_yt_engine` + `aura_dsp`) con `cargo-ndk`
 // =============================================================================
 val rustCrateDir = file("../../rust/aura_yt_engine")
+val rustDspCrateDir = file("../../rust/aura_dsp")
 
 val cargoExecutable = listOf(
     File(System.getProperty("user.home"), ".cargo/bin/cargo"),
@@ -278,6 +285,57 @@ fun registerAuraRustTask(variant: String) {
 
 registerAuraRustTask("debug")
 registerAuraRustTask("release")
+
+fun registerAuraDspRustTask(variant: String) {
+    val capitalized = variant.replaceFirstChar { it.uppercaseChar() }
+    val taskName = "compileAuraDspRust$capitalized"
+    val outputDir = layout.buildDirectory.dir("rustDspJniLibs/$variant").get().asFile
+    val abisToBuild = requestedAbis
+
+    tasks.register<Exec>(taskName) {
+        group = "rust"
+        description = "Compila libaura_dsp.so para $variant (${abisToBuild.joinToString()})"
+        workingDir = rustDspCrateDir
+        inputs.property("requestedAbis", abisToBuild.joinToString(","))
+
+        val ndkPath = if (androidSdkDir.isNotEmpty()) {
+            "$androidSdkDir/ndk/$configuredNdkVersion"
+        } else {
+            System.getenv("ANDROID_NDK_HOME") ?: ""
+        }
+
+        val cmdArgs = mutableListOf(
+            "ndk",
+            "--platform", "28",
+            "-o", outputDir.absolutePath
+        )
+        abisToBuild.forEach { abi ->
+            cmdArgs.add("-t")
+            cmdArgs.add(abi)
+        }
+        cmdArgs.addAll(listOf("build", "--release"))
+
+        executable = cargoExecutable
+        args = cmdArgs
+
+        if (ndkPath.isNotEmpty()) {
+            environment("ANDROID_NDK_HOME", ndkPath)
+        }
+        environment("RUSTFLAGS", "-C link-arg=-Wl,-z,max-page-size=16384")
+
+        doFirst {
+            outputDir.deleteRecursively()
+            outputDir.mkdirs()
+        }
+    }
+
+    tasks.matching { it.name == "merge${capitalized}JniLibFolders" }.configureEach {
+        dependsOn(taskName)
+    }
+}
+
+registerAuraDspRustTask("debug")
+registerAuraDspRustTask("release")
 
 dependencies {
     // Media3 ExoPlayer y MediaSession (Licencia Apache-2.0)

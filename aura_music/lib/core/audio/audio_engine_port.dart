@@ -19,6 +19,7 @@ abstract class AudioEnginePort {
   Stream<NativePlaybackEvent> get playbackEvents;
   Stream<({int processed, int total})> get importProgressEvents;
   Stream<DownloadProgressEvent> get downloadProgressEvents;
+  Stream<YtUpdateProgressEvent> get ytUpdateProgressEvents;
   Stream<String> get errorEvents;
 
   Future<void> initialize();
@@ -33,7 +34,12 @@ abstract class AudioEnginePort {
     YtDownloadFormat format = YtDownloadFormat.best,
   });
 
-  Future<YtEngineStatus> getYtEngineStatus();
+  Future<YtEngineStatus> getYtEngineStatus({bool includePython = false});
+  Future<YtUpdateCheckResult> checkYtEngineUpdates();
+  Future<YtUpdateResult> updateYtEngine({bool force = false});
+  Future<bool> setYtAutoUpdateEnabled(bool enabled);
+  Future<YtRestoreResult> restoreBundledYtEngine();
+
 
   /// Control de cola y reproducción
   Future<void> setQueueAndPlay({
@@ -43,6 +49,18 @@ abstract class AudioEnginePort {
     int startPositionMs = 0,
   });
 
+  Future<void> addToQueue({
+    required AudioTrack track,
+    int? insertIndex,
+  });
+
+  Future<void> moveQueueItem({
+    required int fromIndex,
+    required int toIndex,
+  });
+
+  Future<void> removeQueueItem({required int index});
+
   Future<void> play();
   Future<void> pause();
   Future<void> seekTo(Duration position);
@@ -51,6 +69,11 @@ abstract class AudioEnginePort {
   Future<void> skipToIndex(int index);
   Future<void> setShuffle(bool enabled);
   Future<void> setAuraRepeatMode(AuraRepeatMode mode);
+
+  /// Ecualizador / DSP nativo en Rust (`aura_dsp`)
+  Future<EqualizerState> getEqualizerState();
+
+  Future<EqualizerState> updateEqualizerState(EqualizerState state);
 
   /// Conversión nativa a WebP sin pérdida y actualización de metadatos en cola
   Future<LosslessWebpResult> convertImageToLosslessWebp({
@@ -64,6 +87,11 @@ abstract class AudioEnginePort {
   });
 
   Future<void> deleteCustomArtworks(String trackId);
+
+  Future<void> deleteTrackResources({
+    required String trackId,
+    required String trackUri,
+  });
 
   Future<void> updateMediaItemMetadata(AudioTrack track);
 

@@ -1,0 +1,31 @@
+# ==============================================================================
+# Cargo.toml — Crate nativo Rust de procesamiento DSP en tiempo real (aura_dsp)
+# ------------------------------------------------------------------------------
+# Todas las dependencias utilizan licencias permisivas (MIT / Apache-2.0):
+#   - jni (MIT / Apache-2.0): puente directo Kotlin Media3 <-> Rust sobre
+#     DirectByteBuffer sin copias extra en el hilo de audio.
+#   - serde / serde_json (MIT / Apache-2.0): diagnóstico estructurado del motor.
+# El algoritmo Biquad IIR multibanda, Preamp y limitador suave está implementado
+# íntegramente en Rust puro sin dependencias GPL/AGPL.
+# ==============================================================================
+
+[package]
+name = "aura_dsp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Motor DSP nativo en Rust (ecualizador Biquad 5 bandas, preamp y limitador suave) para Aura Music"
+
+[lib]
+name = "aura_dsp"
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "symbols"

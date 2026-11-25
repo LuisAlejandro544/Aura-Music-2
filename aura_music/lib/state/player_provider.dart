@@ -42,6 +42,8 @@ class PlayerProvider extends ChangeNotifier {
   Duration _duration = Duration.zero;
   String? _errorMessage;
   bool _isScrubbing = false;
+  EqualizerState _equalizer = const EqualizerState();
+  int _eqMutationSeq = 0;
 
   List<AudioTrack> get queue => List.unmodifiable(_queue);
   int get currentIndex => _currentIndex;
@@ -60,6 +62,7 @@ class PlayerProvider extends ChangeNotifier {
       _duration.inMilliseconds > 0 ? _duration : (currentTrack?.duration ?? Duration.zero);
   String? get errorMessage => _errorMessage;
   AudioEngineBackend get activeBackend => _engine.activeBackend;
+  EqualizerState get equalizer => _equalizer;
 
   double get progress {
     final totalMs = duration.inMilliseconds;
@@ -70,6 +73,8 @@ class PlayerProvider extends ChangeNotifier {
   /// Inicializa el motor de audio de forma diferida sin bloquear el arranque.
   Future<void> initializeEngineDeferred() async {
     await _engine.initialize();
+    _equalizer = await _engine.getEqualizerState();
+    notifyListeners();
     await _restoreLastSessionIfAvailable();
   }
 
@@ -192,36 +197,75 @@ class PlayerProvider extends ChangeNotifier {
     await _engine.skipToIndex(index);
   }
 
-  void addToQueueEnd(AudioTrack track) {
+  Future<void> addToQueueEnd(AudioTrack track) async {
     if (_queue.isEmpty) {
-      playQueue([track]);
+      await playQueue([track]);
       return;
     }
-    _queue = [..._queue, track];
+    final entry = track.copyWith();
+    _queue = [..._queue, entry];
     notifyListeners();
-    _engine.setQueueAndPlay(
-      tracks: _queue,
-      startIndex: _currentIndex,
-      autoPlay: _isPlaying,
-      startPositionMs: _position.inMilliseconds,
-    );
+    await _engine.addToQueue(track: entry);
   }
 
-  void playNextInQueue(AudioTrack track) {
+  Future<void> playNextInQueue(AudioTrack track) async {
     if (_queue.isEmpty) {
-      playQueue([track]);
+      await playQueue([track]);
       return;
     }
+    final entry = track.copyWith();
     final insertIndex = (_currentIndex + 1).clamp(0, _queue.length);
-    final updated = [..._queue]..insert(insertIndex, track);
+    final updated = [..._queue]..insert(insertIndex, entry);
     _queue = updated;
     notifyListeners();
-    _engine.setQueueAndPlay(
-      tracks: _queue,
-      startIndex: _currentIndex,
-      autoPlay: _isPlaying,
-      startPositionMs: _position.inMilliseconds,
-    );
+    await _engine.addToQueue(track: entry, insertIndex: insertIndex);
+  }
+
+  Future<void> reorderQueueItem(int oldIndex, int targetIndex) async {
+    if (oldIndex < 0 ||
+        oldIndex >= _queue.length ||
+        targetIndex < 0 ||
+        targetIndex >= _queue.length ||
+        oldIndex == targetIndex) {
+      return;
+    }
+    final updated = [..._queue];
+    final moved = updated.removeAt(oldIndex);
+    updated.insert(targetIndex, moved);
+    _queue = updated;
+
+    if (oldIndex == _currentIndex) {
+      _currentIndex = targetIndex;
+    } else if (oldIndex < _currentIndex && targetIndex >= _currentIndex) {
+      _currentIndex -= 1;
+    } else if (oldIndex > _currentIndex && targetIndex <= _currentIndex) {
+      _currentIndex += 1;
+    }
+
+    notifyListeners();
+    await _engine.moveQueueItem(fromIndex: oldIndex, toIndex: targetIndex);
+  }
+
+  Future<void> removeFromQueue(int index) async {
+    if (index < 0 || index >= _queue.length) return;
+    final updated = [..._queue]..removeAt(index);
+    _queue = updated;
+
+    if (_queue.isEmpty) {
+      _currentIndex = 0;
+      _isPlaying = false;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+    } else if (index < _currentIndex) {
+      _currentIndex -= 1;
+    } else if (index == _currentIndex) {
+      _currentIndex = _currentIndex.clamp(0, _queue.length - 1);
+      _position = Duration.zero;
+      _duration = _queue[_currentIndex].duration;
+    }
+
+    notifyListeners();
+    await _engine.removeQueueItem(index: index);
   }
 
   void beginScrub() {
@@ -273,6 +317,76 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
       await _engine.updateMediaItemMetadata(updated);
     }
+  }
+
+  Future<void> refreshEqualizerState() async {
+    _equalizer = await _engine.getEqualizerState();
+    notifyListeners();
+  }
+
+  Future<void> _pushEqualizerState(EqualizerState next) async {
+    final seq = ++_eqMutationSeq;
+    _equalizer = next;
+    notifyListeners();
+    final synced = await _engine.updateEqualizerState(next);
+    if (seq == _eqMutationSeq) {
+      _equalizer = synced;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setEqualizerEnabled(bool enabled) {
+    return _pushEqualizerState(_equalizer.copyWith(enabled: enabled));
+  }
+
+  Future<void> applyEqualizerPreset(EqualizerPreset preset) {
+    return _pushEqualizerState(
+      _equalizer.copyWith(
+        enabled: true,
+        presetId: preset.id,
+        preampDb: preset.preampDb,
+        bandGainsDb: List<double>.from(preset.bandGainsDb),
+      ),
+    );
+  }
+
+  Future<void> setBandGain(int bandIndex, double gainDb) {
+    if (bandIndex < 0 || bandIndex >= 5) return Future.value();
+    final updatedBands = List<double>.from(_equalizer.bandGainsDb);
+    updatedBands[bandIndex] = gainDb.clamp(-12.0, 12.0);
+    return _pushEqualizerState(
+      _equalizer.copyWith(
+        enabled: true,
+        presetId: 'custom',
+        bandGainsDb: updatedBands,
+      ),
+    );
+  }
+
+  Future<void> setPreampDb(double preampDb) {
+    return _pushEqualizerState(
+      _equalizer.copyWith(
+        enabled: true,
+        preampDb: preampDb.clamp(-6.0, 6.0),
+      ),
+    );
+  }
+
+  Future<void> setLimiterEnabled(bool limiterEnabled) {
+    return _pushEqualizerState(
+      _equalizer.copyWith(limiterEnabled: limiterEnabled),
+    );
+  }
+
+  Future<void> resetEqualizer() {
+    return _pushEqualizerState(
+      _equalizer.copyWith(
+        presetId: 'flat',
+        preampDb: 0.0,
+        limiterEnabled: true,
+        bandGainsDb: const [0.0, 0.0, 0.0, 0.0, 0.0],
+      ),
+    );
   }
 
   Future<void> _persistLastSession(String trackId, int posMs) async {

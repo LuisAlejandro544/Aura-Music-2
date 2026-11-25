@@ -2,7 +2,7 @@
 
 ## 1. Estado actual (Reproducción Media3 + Descarga `yt-dlp` + Rust `aura_yt_engine`)
 
-- **Interfaz**: Flutter + Dart en modo claro cálido (*Acoustic Warmth*: `#F9F6F0`, `#F0EBE1`, `#2C2524`, `#D96B43`, `#E5A93B`).
+- **Interfaz**: Flutter + Dart con sistema de tema configurable Claro/Oscuro/Sistema (*Acoustic Warmth*: Claro `#F9F6F0` / Oscuro `#171413`, con `AuraPalette` `ThemeExtension` y `SettingsScreen`).
 - **Compuerta de permisos previos (`PermissionsScreen`)**: Antes de entrar a `AppShell`, la app verifica y solicita `POST_NOTIFICATIONS` (Android 13+) y explica el modelo privado de acceso bajo demanda (SAF + Photo Picker).
 - **Motor de audio**: `androidx.media3:media3-exoplayer` + `media3-session` dentro de `AuraPlaybackService.kt`.
 - **Importación privada**: Storage Access Framework (`AuraSafImporter.kt`) con permisos persistentes (`takePersistableUriPermission`) sobre archivos/carpetas elegidas por el usuario.
@@ -32,19 +32,36 @@ Aura Music ya integra Rust en producción mediante el crate `aura_yt_engine` (li
   1. `nativeParseAndCanonicalizeUrl`: limpia enlaces de YouTube (`youtu.be`, `watch`, `shorts`, `embed`, `live`), elimina parámetros de rastreo como `?si=` y valida el ID de 11 caracteres antes de invocar Python.
   2. `nativeVerifyAndTagAudioFile`: valida los *magic bytes* del contenedor descargado (`MP4/M4A`, `WebM/MKV`, `OGG`, `FLAC`, `WAV`, `MP3`) rechazando páginas HTML de bloqueo o respuestas corruptas; inspecciona propiedades técnicas (`sampleRateHz`, `bitrateKbps`, `channels`, `durationMs`, `mimeType`) con `lofty` e incrusta título, artista, álbum y carátula cuando el contenedor lo admite, sin necesitar FFmpeg GPL.
 
-### Orquestación mínima en Python (`Chaquopy 17.2.0`)
-- **Archivo**: `aura_music/android/app/src/main/python/aura_yt_engine.py`.
-- **Dependencias exactas**: `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps`, `certifi` sobre Python `3.11`.
+### Orquestación mínima y auto-actualizador en Python (`Chaquopy 17.2.0`)
+- **Archivo**: `aura_music/android/app/src/main/python/aura_yt_engine.py` (con tests unitarios en `aura_music/test/python/test_aura_yt_engine.py`).
+- **Dependencias base**: `yt-dlp --no-deps`, `yt-dlp-ejs --no-deps`, `certifi` sobre Python `3.11`.
 - Selecciona flujos directos de audio (`m4a`/`opus`/`best`) reproducibles por Media3 ExoPlayer sin transcodificación FFmpeg y usa `js_runtimes={'quickjs': {'path': quickjs_path}}`.
-- Todo el flujo se ejecuta en `Dispatchers.IO` dentro de `AuraYtDownloader.kt`, reportando progreso por `EventChannel` a `DownloadUrlScreen`.
+- **Auto-actualizador desde PyPI sin recompilar APK**:
+  - Consulta la API JSON oficial de PyPI para `yt-dlp` y `yt-dlp-ejs`, descarga únicamente wheels Python puros (`py3-none-any.whl`), verifica su digest **SHA-256** y previene ataques **ZipSlip** antes de extraerlos en `filesDir/yt_dlp_updates/`.
+  - Prioriza ese directorio en `sys.path[0]`, recarga `sys.modules` en caliente y permite restaurar las versiones originales incluidas en el APK en cualquier momento.
+  - `AuraYtDownloader.kt` ejecuta todo el flujo en `Dispatchers.IO` bajo un `Mutex` exclusivo (`engineOpMutex`), comprueba actualizaciones automáticamente cada 24 horas (configurable) antes de descargar y reporta progreso por `EventChannel` (`downloadProgress` / `ytUpdateProgress`) hacia `DownloadUrlScreen` y `SettingsScreen`.
 
 ---
 
-## 3. Siguiente etapa en Rust (Fase 3: DSP de audio `aura_dsp`)
+## 3. Motor DSP nativo en Rust (`aura_music/rust/aura_dsp` -> `libaura_dsp.so`)
 
-Toda la UI y los providers de Flutter dependen de la interfaz abstracta `AudioEnginePort` (`lib/core/audio/audio_engine_port.dart`):
-1. Añadir módulos DSP en `aura_music/rust/` (por ejemplo `symphonia` / `rubato` / ecualizador paramétrico Biquad / FFT / ReplayGain bajo MIT/Apache-2.0).
-2. Acoplar un `AudioProcessor` personalizado en `AuraPlaybackService.kt` enviando buffers PCM por JNI, o extender `AudioEnginePort` vía FFI.
+Aura Music integra procesamiento de audio en tiempo real mediante el crate `aura_dsp` (licencia `MIT OR Apache-2.0`), compilado obligatoriamente con `cargo-ndk` para `armeabi-v7a` y `arm64-v8a` hacia `rustDspJniLibs/` (separado de `rustJniLibs/`):
+
+### Integración con Media3 ExoPlayer sin bloqueos
+- **Bridge Kotlin (`AuraRustDspBridge.kt`)**: Carga `libaura_dsp.so`, restaura y persiste las preferencias del ecualizador en `SharedPreferences` (`aura_dsp_prefs`) incluso antes de abrir la UI, y sincroniza los parámetros con Rust mediante variables atómicas lock-free (`AtomicBool`, `AtomicI32`, `AtomicU64`).
+- **AudioProcessor (`AuraRustDspProcessor.kt`)**: Extiende `BaseAudioProcessor` y se inyecta en `DefaultAudioSink` mediante un `DefaultRenderersFactory` personalizado dentro de `AuraPlaybackService.kt`.
+- **Zero-copy JNI (`aura_dsp/src/lib.rs`)**: Procesa in-place el `DirectByteBuffer` de salida para formatos `PCM 16-bit` y `PCM 32-bit float` sin asignaciones de memoria en el hilo de audio.
+
+### Cadena DSP implementada y UI comprensible (`EqualizerScreen`)
+1. **Preamp** (`-6 dB` a `+6 dB` en UI, hasta `±12 dB` en motor).
+2. **Ecualizador Biquad IIR de 5 bandas en serie** (hasta 8 canales, con límite seguro de Nyquist al 45% de la tasa de muestreo):
+   - `60 Hz` (*Low-Shelf*): **Subgraves** — vibración y cuerpo profundo.
+   - `230 Hz` (*Peaking EQ*): **Graves** — calidez, bajo y golpe.
+   - `910 Hz` (*Peaking EQ*): **Voces** — claridad de voz e instrumentos.
+   - `3.6 kHz` (*Peaking EQ*): **Presencia** — definición, guitarras y ataque.
+   - `12 kHz` (*High-Shelf*): **Brillo** — aire, platillos y detalle fino.
+3. **Limitador suave anti-distorsión (`soft-knee tanh`)**: Evita saturación digital o chasquidos cuando se refuerzan múltiples bandas.
+4. **Siguientes extensiones DSP planeadas**: Normalización ReplayGain / LUFS y análisis espectral FFT de baja latencia para visualizador en `FullPlayerScreen`.
 
 ---
 

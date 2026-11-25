@@ -33,8 +33,9 @@ class TrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Material(
-      color: isActive ? AuraColors.accentSoft.withValues(alpha: 0.65) : Colors.transparent,
+      color: isActive ? c.accentSoft.withValues(alpha: 0.65) : Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -52,7 +53,7 @@ class TrackTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: isActive ? AuraColors.accent : AuraColors.textSecondary,
+                      color: isActive ? c.accent : c.textSecondary,
                     ),
                   ),
                 ),
@@ -73,7 +74,7 @@ class TrackTile extends StatelessWidget {
                       height: 52,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(13),
-                        color: AuraColors.textPrimary.withValues(alpha: 0.35),
+                        color: c.scrim,
                       ),
                       child: Icon(
                         isPlaying ? Icons.graphic_eq_rounded : Icons.pause_rounded,
@@ -95,7 +96,7 @@ class TrackTile extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 15.5,
                         fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                        color: isActive ? AuraColors.accent : AuraColors.textPrimary,
+                        color: isActive ? c.accent : c.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -105,9 +106,7 @@ class TrackTile extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                           margin: const EdgeInsets.only(right: 6),
                           decoration: BoxDecoration(
-                            color: track.isLossless
-                                ? AuraColors.sageSoft
-                                : AuraColors.surface,
+                            color: track.isLossless ? c.sageSoft : c.surface,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -115,9 +114,7 @@ class TrackTile extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: track.isLossless
-                                  ? AuraColors.sage
-                                  : AuraColors.textSecondary,
+                              color: track.isLossless ? c.sage : c.textSecondary,
                             ),
                           ),
                         ),
@@ -126,9 +123,9 @@ class TrackTile extends StatelessWidget {
                             '${track.artist} · ${formatDuration(track.duration)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
-                              color: AuraColors.textSecondary,
+                              color: c.textSecondary,
                             ),
                           ),
                         ),
@@ -138,19 +135,19 @@ class TrackTile extends StatelessWidget {
                 ),
               ),
               if (track.isFavorite)
-                const Padding(
-                  padding: EdgeInsets.only(right: 2),
+                Padding(
+                  padding: const EdgeInsets.only(right: 2),
                   child: Icon(
                     Icons.favorite_rounded,
                     size: 18,
-                    color: AuraColors.accent,
+                    color: c.accent,
                   ),
                 ),
               IconButton(
                 onPressed: onMoreTap,
-                icon: const Icon(
+                icon: Icon(
                   Icons.more_vert_rounded,
-                  color: AuraColors.textSecondary,
+                  color: c.textSecondary,
                   size: 20,
                 ),
                 tooltip: 'Opciones de pista',

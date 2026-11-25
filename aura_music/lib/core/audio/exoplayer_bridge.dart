@@ -24,6 +24,8 @@ class ExoPlayerBridge implements AudioEnginePort {
       StreamController<({int processed, int total})>.broadcast();
   final StreamController<DownloadProgressEvent> _downloadProgressController =
       StreamController<DownloadProgressEvent>.broadcast();
+  final StreamController<YtUpdateProgressEvent> _ytUpdateProgressController =
+      StreamController<YtUpdateProgressEvent>.broadcast();
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
 
@@ -43,6 +45,10 @@ class ExoPlayerBridge implements AudioEnginePort {
   @override
   Stream<DownloadProgressEvent> get downloadProgressEvents =>
       _downloadProgressController.stream;
+
+  @override
+  Stream<YtUpdateProgressEvent> get ytUpdateProgressEvents =>
+      _ytUpdateProgressController.stream;
 
   @override
   Stream<String> get errorEvents => _errorController.stream;
@@ -99,6 +105,17 @@ class ExoPlayerBridge implements AudioEnginePort {
         _downloadProgressController.add(
           DownloadProgressEvent(
             stage: (map['stage'] ?? 'resolving').toString(),
+            percent: (map['percent'] as num?)?.toDouble() ?? 0.0,
+            downloadedBytes: (map['downloadedBytes'] as num?)?.toInt() ?? 0,
+            totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
+            message: (map['message'] ?? '').toString(),
+          ),
+        );
+      case 'ytUpdateProgress':
+        _ytUpdateProgressController.add(
+          YtUpdateProgressEvent(
+            stage: (map['stage'] ?? 'checking').toString(),
+            packageName: (map['packageName'] ?? '').toString(),
             percent: (map['percent'] as num?)?.toDouble() ?? 0.0,
             downloadedBytes: (map['downloadedBytes'] as num?)?.toInt() ?? 0,
             totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
@@ -181,11 +198,63 @@ class ExoPlayerBridge implements AudioEnginePort {
   }
 
   @override
-  Future<YtEngineStatus> getYtEngineStatus() async {
+  Future<YtEngineStatus> getYtEngineStatus({bool includePython = false}) async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'getYtEngineStatus',
+        {'includePython': includePython},
+      );
+      return YtEngineStatus.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return const YtEngineStatus(
+        pythonStarted: false,
+        pythonVersion: '',
+        ytDlpVersion: '',
+        ejsVersion: '',
+        quickjsReady: false,
+        rustCrate: '',
+        audioProcessor: '',
+        arch: '',
+      );
+    }
+  }
+
+  @override
+  Future<YtUpdateCheckResult> checkYtEngineUpdates() async {
     final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
-      'getYtEngineStatus',
+      'checkYtEngineUpdates',
     );
-    return YtEngineStatus.fromMap(raw ?? const <String, dynamic>{});
+    return YtUpdateCheckResult.fromMap(raw ?? const <String, dynamic>{});
+  }
+
+  @override
+  Future<YtUpdateResult> updateYtEngine({bool force = false}) async {
+    final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+      'updateYtEngine',
+      {'force': force},
+    );
+    return YtUpdateResult.fromMap(raw ?? const <String, dynamic>{});
+  }
+
+  @override
+  Future<bool> setYtAutoUpdateEnabled(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setYtAutoUpdateEnabled',
+        {'enabled': enabled},
+      );
+      return result ?? enabled;
+    } on MissingPluginException {
+      return enabled;
+    }
+  }
+
+  @override
+  Future<YtRestoreResult> restoreBundledYtEngine() async {
+    final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+      'restoreBundledYtEngine',
+    );
+    return YtRestoreResult.fromMap(raw ?? const <String, dynamic>{});
   }
 
   @override
@@ -200,6 +269,35 @@ class ExoPlayerBridge implements AudioEnginePort {
       'startIndex': startIndex,
       'autoPlay': autoPlay,
       'startPositionMs': startPositionMs,
+    });
+  }
+
+  @override
+  Future<void> addToQueue({
+    required AudioTrack track,
+    int? insertIndex,
+  }) async {
+    await _methodChannel.invokeMethod<void>('addToQueue', {
+      'track': track.toMap(),
+      if (insertIndex != null) 'insertIndex': insertIndex,
+    });
+  }
+
+  @override
+  Future<void> moveQueueItem({
+    required int fromIndex,
+    required int toIndex,
+  }) async {
+    await _methodChannel.invokeMethod<void>('moveQueueItem', {
+      'fromIndex': fromIndex,
+      'toIndex': toIndex,
+    });
+  }
+
+  @override
+  Future<void> removeQueueItem({required int index}) async {
+    await _methodChannel.invokeMethod<void>('removeQueueItem', {
+      'index': index,
     });
   }
 
@@ -240,6 +338,37 @@ class ExoPlayerBridge implements AudioEnginePort {
         'setRepeatMode',
         {'mode': mode.name},
       );
+
+  @override
+  Future<EqualizerState> getEqualizerState() async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'getEqualizerState',
+      );
+      return EqualizerState.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return const EqualizerState();
+    }
+  }
+
+  @override
+  Future<EqualizerState> updateEqualizerState(EqualizerState state) async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'updateEqualizerState',
+        {
+          'enabled': state.enabled,
+          'presetId': state.presetId,
+          'preampDb': state.preampDb,
+          'limiterEnabled': state.limiterEnabled,
+          'bandGainsDb': state.bandGainsDb,
+        },
+      );
+      return EqualizerState.fromMap(raw ?? const <String, dynamic>{});
+    } on MissingPluginException {
+      return state;
+    }
+  }
 
   @override
   Future<LosslessWebpResult> convertImageToLosslessWebp({
@@ -291,6 +420,24 @@ class ExoPlayerBridge implements AudioEnginePort {
   }
 
   @override
+  Future<void> deleteTrackResources({
+    required String trackId,
+    required String trackUri,
+  }) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'deleteTrackResources',
+        {
+          'trackId': trackId,
+          'trackUri': trackUri,
+        },
+      );
+    } on MissingPluginException {
+      // Ignorado fuera de Android nativo
+    }
+  }
+
+  @override
   Future<void> updateMediaItemMetadata(AudioTrack track) async {
     try {
       await _methodChannel.invokeMethod<void>(
@@ -308,6 +455,7 @@ class ExoPlayerBridge implements AudioEnginePort {
     _playbackController.close();
     _importController.close();
     _downloadProgressController.close();
+    _ytUpdateProgressController.close();
     _errorController.close();
   }
 }

@@ -26,6 +26,7 @@ class _ImportSourceSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final library = context.watch<LibraryProvider>();
 
     return SafeArea(
@@ -40,26 +41,26 @@ class _ImportSourceSheet extends StatelessWidget {
                 width: 42,
                 height: 4.5,
                 decoration: BoxDecoration(
-                  color: AuraColors.border,
+                  color: c.border,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Importar tu música',
               style: TextStyle(
                 fontSize: 21,
                 fontWeight: FontWeight.w800,
-                color: AuraColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Aura Music nunca escanea todo tu teléfono. Elige exactamente las canciones o carpetas que quieres traer.',
               style: TextStyle(
                 fontSize: 13.5,
-                color: AuraColors.textSecondary,
+                color: c.textSecondary,
                 height: 1.4,
               ),
             ),
@@ -68,7 +69,7 @@ class _ImportSourceSheet extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AuraColors.surface,
+                  color: c.surface,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Column(
@@ -76,12 +77,12 @@ class _ImportSourceSheet extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const SizedBox(
+                        SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: AuraColors.accent,
+                            color: c.accent,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -92,9 +93,9 @@ class _ImportSourceSheet extends StatelessWidget {
                                 : 'Abriendo selector del sistema...',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: AuraColors.textPrimary,
+                              color: c.textPrimary,
                             ),
                           ),
                         ),
@@ -108,10 +109,8 @@ class _ImportSourceSheet extends StatelessWidget {
                           value: (library.importProcessed / library.importTotal)
                               .clamp(0.0, 1.0),
                           minHeight: 6,
-                          backgroundColor: AuraColors.border,
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            AuraColors.accent,
-                          ),
+                          backgroundColor: c.border,
+                          valueColor: AlwaysStoppedAnimation<Color>(c.accent),
                         ),
                       ),
                     ],
@@ -121,8 +120,8 @@ class _ImportSourceSheet extends StatelessWidget {
             ] else ...[
               _ImportOptionCard(
                 icon: Icons.audio_file_rounded,
-                iconBg: AuraColors.accentSoft,
-                iconColor: AuraColors.accent,
+                iconBg: c.accentSoft,
+                iconColor: c.accent,
                 title: 'Seleccionar archivos de audio',
                 subtitle: 'Elige una o varias canciones (MP3, FLAC, M4A, WAV, OGG)',
                 onTap: () async {
@@ -142,8 +141,8 @@ class _ImportSourceSheet extends StatelessWidget {
               const SizedBox(height: 12),
               _ImportOptionCard(
                 icon: Icons.folder_open_rounded,
-                iconBg: AuraColors.amberSoft,
-                iconColor: AuraColors.amber,
+                iconBg: c.amberSoft,
+                iconColor: c.amber,
                 title: 'Importar carpeta completa',
                 subtitle: 'Conserva acceso directo a toda una carpeta de música',
                 onTap: () async {
@@ -163,8 +162,8 @@ class _ImportSourceSheet extends StatelessWidget {
               const SizedBox(height: 12),
               _ImportOptionCard(
                 icon: Icons.cloud_download_rounded,
-                iconBg: AuraColors.sageSoft,
-                iconColor: AuraColors.sage,
+                iconBg: c.sageSoft,
+                iconColor: c.sage,
                 title: 'Descargar desde URL (yt-dlp)',
                 subtitle: 'Extrae audio directo con yt-dlp-ejs y Rust QuickJS-ng',
                 onTap: () {
@@ -204,8 +203,9 @@ class _ImportOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Material(
-      color: AuraColors.surfaceElevated,
+      color: c.surfaceElevated,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -214,7 +214,7 @@ class _ImportOptionCard extends StatelessWidget {
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AuraColors.border),
+            border: Border.all(color: c.border),
           ),
           child: Row(
             children: [
@@ -234,26 +234,26 @@ class _ImportOptionCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15.5,
                         fontWeight: FontWeight.w700,
-                        color: AuraColors.textPrimary,
+                        color: c.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
-                        color: AuraColors.textSecondary,
+                        color: c.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
-                color: AuraColors.textSecondary,
+                color: c.textSecondary,
               ),
             ],
           ),

@@ -59,8 +59,9 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Scaffold(
-      backgroundColor: AuraColors.background,
+      backgroundColor: c.background,
       body: Stack(
         children: [
           IndexedStack(
@@ -108,11 +109,12 @@ class _AuraBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: AuraColors.surface,
+      decoration: BoxDecoration(
+        color: c.surface,
         border: Border(
-          top: BorderSide(color: AuraColors.border, width: 1),
+          top: BorderSide(color: c.border, width: 1),
         ),
       ),
       child: SafeArea(
@@ -167,10 +169,11 @@ class _AuraNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        splashColor: AuraColors.accent.withValues(alpha: 0.08),
+        splashColor: c.accent.withValues(alpha: 0.08),
         highlightColor: Colors.transparent,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -181,13 +184,13 @@ class _AuraNavItem extends StatelessWidget {
               width: 60,
               height: 30,
               decoration: BoxDecoration(
-                color: selected ? AuraColors.accentSoft : Colors.transparent,
+                color: selected ? c.accentSoft : Colors.transparent,
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Icon(
                 selected ? selectedIcon : icon,
                 size: 22,
-                color: selected ? AuraColors.accent : AuraColors.textPrimary,
+                color: selected ? c.accent : c.textPrimary,
               ),
             ),
             const SizedBox(height: 3),
@@ -198,7 +201,7 @@ class _AuraNavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: AuraColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
           ],

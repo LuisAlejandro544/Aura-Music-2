@@ -27,18 +27,19 @@ class CollectionDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final player = context.watch<PlayerProvider>();
-    final tint = AuraTheme.warmTintForSeed(collection.title);
+    final tint = AuraTheme.warmTintForSeed(collection.title, isDark: c.isDark);
 
     return Scaffold(
-      backgroundColor: AuraColors.background,
+      backgroundColor: c.background,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
             expandedHeight: 284,
             pinned: true,
-            backgroundColor: AuraColors.background,
+            backgroundColor: c.background,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -47,7 +48,7 @@ class CollectionDetailScreen extends StatelessWidget {
                     end: Alignment.bottomCenter,
                     colors: [
                       tint.withValues(alpha: 0.75),
-                      AuraColors.background,
+                      c.background,
                     ],
                   ),
                 ),
@@ -70,10 +71,10 @@ class CollectionDetailScreen extends StatelessWidget {
                           collection.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                         ),
                       ),
@@ -84,9 +85,9 @@ class CollectionDetailScreen extends StatelessWidget {
                           '${collection.subtitle} · ${formatCollectionSummary(collection.tracks.length, collection.totalDuration)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13.5,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                       ),
@@ -108,7 +109,7 @@ class CollectionDetailScreen extends StatelessWidget {
                           ? null
                           : () => player.playQueue(collection.tracks, startIndex: 0),
                       style: FilledButton.styleFrom(
-                        backgroundColor: AuraColors.accent,
+                        backgroundColor: c.accent,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -137,9 +138,9 @@ class CollectionDetailScreen extends StatelessWidget {
                               }
                             },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AuraColors.textPrimary,
-                        side: const BorderSide(color: AuraColors.border),
-                        backgroundColor: AuraColors.surfaceElevated,
+                        foregroundColor: c.textPrimary,
+                        side: BorderSide(color: c.border),
+                        backgroundColor: c.surfaceElevated,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
@@ -158,12 +159,12 @@ class CollectionDetailScreen extends StatelessWidget {
           ),
 
           if (collection.tracks.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
                 child: Text(
                   'Esta colección está vacía.',
-                  style: TextStyle(color: AuraColors.textSecondary),
+                  style: TextStyle(color: c.textSecondary),
                 ),
               ),
             )

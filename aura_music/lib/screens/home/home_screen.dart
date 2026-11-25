@@ -22,6 +22,7 @@ import '../../widgets/sheets/import_source_sheet.dart';
 import '../../widgets/sheets/track_options_sheet.dart';
 import '../../widgets/track_tile.dart';
 import '../collection/collection_detail_screen.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -40,6 +41,7 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final library = context.watch<LibraryProvider>();
     final player = context.watch<PlayerProvider>();
     final tracks = library.tracks;
@@ -66,11 +68,11 @@ class HomeScreen extends StatelessWidget {
                       children: [
                         Text(
                           _greetingText(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.7,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -78,18 +80,38 @@ class HomeScreen extends StatelessWidget {
                           tracks.isEmpty
                               ? 'Tu espacio sonoro local en Aura Music'
                               : '${tracks.length} canciones locales listas para sonar',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13.5,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: 'Configuración',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      );
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: c.surface,
+                      foregroundColor: c.textPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(color: c.border),
+                      ),
+                    ),
+                    icon: const Icon(Icons.tune_rounded, size: 20),
+                  ),
+                  const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: () => showImportSourceSheet(context),
                     style: FilledButton.styleFrom(
-                      backgroundColor: AuraColors.accent,
+                      backgroundColor: c.accent,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -128,8 +150,8 @@ class HomeScreen extends StatelessWidget {
                 children: [
                   _QuickAccessCard(
                     icon: Icons.favorite_rounded,
-                    iconBg: AuraColors.accentSoft,
-                    iconColor: AuraColors.accent,
+                    iconBg: c.accentSoft,
+                    iconColor: c.accent,
                     title: 'Favoritos',
                     subtitle: '${library.favoriteTracks.length} pistas',
                     onTap: () {
@@ -150,8 +172,8 @@ class HomeScreen extends StatelessWidget {
                   ),
                   _QuickAccessCard(
                     icon: Icons.shuffle_rounded,
-                    iconBg: AuraColors.amberSoft,
-                    iconColor: AuraColors.amber,
+                    iconBg: c.amberSoft,
+                    iconColor: c.amber,
                     title: 'Modo Mix',
                     subtitle: 'Todo tu catálogo',
                     onTap: () async {
@@ -164,16 +186,16 @@ class HomeScreen extends StatelessWidget {
                   ),
                   _QuickAccessCard(
                     icon: Icons.folder_rounded,
-                    iconBg: AuraColors.sageSoft,
-                    iconColor: AuraColors.sage,
+                    iconBg: c.sageSoft,
+                    iconColor: c.sage,
                     title: 'Carpetas',
                     subtitle: '${folders.length} importadas',
                     onTap: () => onNavigateToLibraryTab(2),
                   ),
                   _QuickAccessCard(
                     icon: Icons.album_rounded,
-                    iconBg: AuraColors.surface,
-                    iconColor: AuraColors.textPrimary,
+                    iconBg: c.surface,
+                    iconColor: c.textPrimary,
                     title: 'Álbumes',
                     subtitle: '${albums.length} colecciones',
                     onTap: () => onNavigateToLibraryTab(1),
@@ -184,16 +206,16 @@ class HomeScreen extends StatelessWidget {
 
             // Carrusel horizontal de recién importado
             if (recentImported.isNotEmpty) ...[
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
                   child: Text(
                     'Recién importado',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.4,
-                      color: AuraColors.textPrimary,
+                      color: c.textPrimary,
                     ),
                   ),
                 ),
@@ -230,13 +252,13 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
                   child: Row(
                     children: [
-                      const Text(
+                      Text(
                         'Álbumes locales',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.4,
-                          color: AuraColors.textPrimary,
+                          color: c.textPrimary,
                         ),
                       ),
                       const Spacer(),
@@ -278,16 +300,16 @@ class HomeScreen extends StatelessWidget {
 
             // Escuchado recientemente
             if (recentPlayed.isNotEmpty) ...[
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 24, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
                   child: Text(
                     'Escuchado recientemente',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.4,
-                      color: AuraColors.textPrimary,
+                      color: c.textPrimary,
                     ),
                   ),
                 ),
@@ -328,20 +350,21 @@ class _EmptyWelcomeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 14, 20, 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AuraColors.surfaceElevated, AuraColors.surface],
+          colors: [c.surfaceElevated, c.surface],
         ),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AuraColors.border),
+        border: Border.all(color: c.border),
         boxShadow: [
           BoxShadow(
-            color: AuraColors.textPrimary.withValues(alpha: 0.06),
+            color: c.shadow,
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -354,31 +377,31 @@ class _EmptyWelcomeCard extends StatelessWidget {
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: AuraColors.accentSoft,
+              color: c.accentSoft,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.library_music_rounded,
-              color: AuraColors.accent,
+              color: c.accent,
               size: 30,
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'Tu música, bajo tu control',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: AuraColors.textPrimary,
+              color: c.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Aura Music no rastrea ni escanea tu almacenamiento. Importa tus archivos MP3, FLAC, WAV o carpetas favoritas para reproducir con ExoPlayer.',
             style: TextStyle(
               fontSize: 14.5,
               height: 1.45,
-              color: AuraColors.textSecondary,
+              color: c.textSecondary,
             ),
           ),
           const SizedBox(height: 20),
@@ -387,7 +410,7 @@ class _EmptyWelcomeCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onImportPressed,
               style: FilledButton.styleFrom(
-                backgroundColor: AuraColors.accent,
+                backgroundColor: c.accent,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(
@@ -426,8 +449,9 @@ class _QuickAccessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Material(
-      color: AuraColors.surfaceElevated,
+      color: c.surfaceElevated,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -436,7 +460,7 @@ class _QuickAccessCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AuraColors.border),
+            border: Border.all(color: c.border),
           ),
           child: Row(
             children: [
@@ -459,19 +483,19 @@ class _QuickAccessCard extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: AuraColors.textPrimary,
+                        color: c.textPrimary,
                       ),
                     ),
                     Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: AuraColors.textSecondary,
+                        color: c.textSecondary,
                       ),
                     ),
                   ],
@@ -498,6 +522,7 @@ class _CarouselTrackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -518,19 +543,19 @@ class _CarouselTrackCard extends StatelessWidget {
               track.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: AuraColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
             Text(
               track.artist,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
-                color: AuraColors.textSecondary,
+                color: c.textSecondary,
               ),
             ),
           ],
@@ -551,6 +576,7 @@ class _CollectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
@@ -570,19 +596,19 @@ class _CollectionCard extends StatelessWidget {
               collection.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: AuraColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
             Text(
               '${collection.tracks.length} canciones',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AuraColors.textSecondary,
+                color: c.textSecondary,
               ),
             ),
           ],

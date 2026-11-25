@@ -2,16 +2,19 @@
 // AuraYtDownloader.kt — Orquestador Kotlin de descarga con yt-dlp + Rust
 // -----------------------------------------------------------------------------
 // Qué hace este archivo:
-//   Ejecuta todo el pipeline de descarga desde URL en Dispatchers.IO sin
-//   bloquear jamás la UI:
+//   Ejecuta todo el pipeline de descarga y auto-actualización desde URL en
+//   Dispatchers.IO sin bloquear jamás la UI:
 //   1. Valida y limpia la URL en Rust (`AuraRustYtBridge.parseMediaUrl`).
-//   2. Inicia el entorno Python minimalista de Chaquopy (`yt-dlp --no-deps`,
+//   2. Si el auto-actualizador está activo y pasaron >= 24h desde el último
+//      chequeo, consulta PyPI y actualiza `yt-dlp` y `yt-dlp-ejs` en
+//      `filesDir/yt_dlp_updates/` (con verificación SHA-256) antes de bajar.
+//   3. Inicia el entorno Python minimalista de Chaquopy (`yt-dlp --no-deps`,
 //      `yt-dlp-ejs --no-deps`, `certifi`) de forma diferida al primer uso.
-//   3. Ejecuta `aura_yt_engine.download_audio` pasando la ruta ejecutable de
+//   4. Ejecuta `aura_yt_engine.download_audio` pasando la ruta ejecutable de
 //      `libaura_qjs.so` (Rust QuickJS-ng) para resolver desafíos JS de YouTube.
-//   4. Convierte la carátula descargada a WebP sin pérdida persistente mediante
+//   5. Convierte la carátula descargada a WebP sin pérdida persistente mediante
 //      `AuraArtworkProcessor` en `filesDir/custom_artworks/`.
-//   5. Verifica integridad del audio, lee bitrate/sampleRate/duración e
+//   6. Verifica integridad del audio, lee bitrate/sampleRate/duración e
 //      incrusta metadatos + portada en Rust (`AuraRustYtBridge.verifyAndTagAudio`
 //      con `lofty`), devolviendo un `AuraTrackMetadata` listo para ExoPlayer.
 // =============================================================================
@@ -23,6 +26,8 @@ import android.net.Uri
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -31,6 +36,17 @@ import java.security.MessageDigest
 interface YtProgressCallback {
     fun onProgress(
         stage: String,
+        percent: Double,
+        downloadedBytes: Long,
+        totalBytes: Long,
+        message: String
+    )
+}
+
+interface YtUpdateProgressCallback {
+    fun onProgress(
+        stage: String,
+        packageName: String,
         percent: Double,
         downloadedBytes: Long,
         totalBytes: Long,
@@ -49,7 +65,17 @@ object AuraYtDownloader {
     private const val YT_CACHE_DIR = "yt_dlp_cache"
     private const val YT_UPDATES_DIR = "yt_dlp_updates"
 
+    private const val PREFS_NAME = "aura_yt_prefs"
+    private const val KEY_AUTO_UPDATE = "auto_update_enabled"
+    private const val KEY_LAST_CHECK_MS = "last_update_check_ms"
+    private const val KEY_CACHED_PY_VER = "cached_python_version"
+    private const val KEY_CACHED_YTDLP_VER = "cached_yt_dlp_version"
+    private const val KEY_CACHED_EJS_VER = "cached_ejs_version"
+
+    private const val AUTO_UPDATE_INTERVAL_MS = 24L * 60L * 60L * 1000L
+
     private val pythonInitLock = Any()
+    private val engineOpMutex = Mutex()
 
     private fun ensurePythonStarted(context: Context): Python {
         val appContext = context.applicationContext
@@ -61,43 +87,260 @@ object AuraYtDownloader {
         }
     }
 
-    suspend fun getEngineStatus(context: Context): Map<String, Any?> =
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun isAutoUpdateEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_AUTO_UPDATE, true)
+
+    suspend fun setAutoUpdateEnabled(context: Context, enabled: Boolean): Boolean =
         withContext(Dispatchers.IO) {
-            val appContext = context.applicationContext
-            val rustInfo = AuraRustYtBridge.getEngineInfoJson(appContext)
-            val pythonStarted = Python.isStarted()
+            prefs(context).edit().putBoolean(KEY_AUTO_UPDATE, enabled).apply()
+            enabled
+        }
 
-            if (!pythonStarted) {
-                return@withContext mapOf(
-                    "pythonStarted" to false,
-                    "pythonVersion" to "",
-                    "ytDlpVersion" to "",
-                    "ejsVersion" to "",
-                    "quickjsBinaryPath" to rustInfo.optString("quickjsBinaryPath", ""),
-                    "quickjsReady" to rustInfo.optBoolean("quickjsBinaryExists", false),
-                    "rustCrate" to rustInfo.optString("rustCrate", ""),
-                    "audioProcessor" to rustInfo.optString("audioProcessor", ""),
-                    "arch" to rustInfo.optString("arch", "")
-                )
-            }
+    private fun cacheVersions(
+        context: Context,
+        pythonVer: String?,
+        ytDlpVer: String?,
+        ejsVer: String?
+    ) {
+        val editor = prefs(context).edit()
+        if (!pythonVer.isNullOrBlank()) editor.putString(KEY_CACHED_PY_VER, pythonVer)
+        if (!ytDlpVer.isNullOrBlank() && ytDlpVer != "unknown") {
+            editor.putString(KEY_CACHED_YTDLP_VER, ytDlpVer)
+        }
+        if (!ejsVer.isNullOrBlank() && ejsVer != "unknown") {
+            editor.putString(KEY_CACHED_EJS_VER, ejsVer)
+        }
+        editor.apply()
+    }
 
-            val py = ensurePythonStarted(appContext)
-            val module = py.getModule("aura_yt_engine")
-            val qjsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
-            val updateDir = File(appContext.filesDir, YT_UPDATES_DIR).absolutePath
-            val pyJson = JSONObject(module.callAttr("get_engine_info", qjsPath, updateDir).toString())
+    suspend fun getEngineStatus(
+        context: Context,
+        includePython: Boolean = false
+    ): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val rustInfo = AuraRustYtBridge.getEngineInfoJson(appContext)
+        val updateDirFile = File(appContext.filesDir, YT_UPDATES_DIR)
+        val usingUpdatedYtDlp = File(updateDirFile, "yt_dlp").isDirectory
+        val usingUpdatedEjs = File(updateDirFile, "yt_dlp_ejs").isDirectory
+        val p = prefs(appContext)
+        val autoUpdate = p.getBoolean(KEY_AUTO_UPDATE, true)
+        val lastCheckMs = p.getLong(KEY_LAST_CHECK_MS, 0L)
 
-            mapOf(
-                "pythonStarted" to true,
-                "pythonVersion" to pyJson.optString("pythonVersion", ""),
-                "ytDlpVersion" to pyJson.optString("ytDlpVersion", ""),
-                "ejsVersion" to pyJson.optString("ejsVersion", ""),
+        val pythonStarted = Python.isStarted()
+        if (!pythonStarted && !includePython) {
+            return@withContext mapOf(
+                "pythonStarted" to false,
+                "pythonVersion" to (p.getString(KEY_CACHED_PY_VER, "") ?: ""),
+                "ytDlpVersion" to (p.getString(KEY_CACHED_YTDLP_VER, "") ?: ""),
+                "ejsVersion" to (p.getString(KEY_CACHED_EJS_VER, "") ?: ""),
                 "quickjsBinaryPath" to rustInfo.optString("quickjsBinaryPath", ""),
                 "quickjsReady" to rustInfo.optBoolean("quickjsBinaryExists", false),
                 "rustCrate" to rustInfo.optString("rustCrate", ""),
                 "audioProcessor" to rustInfo.optString("audioProcessor", ""),
-                "arch" to rustInfo.optString("arch", "")
+                "arch" to rustInfo.optString("arch", ""),
+                "usingUpdatedYtDlp" to usingUpdatedYtDlp,
+                "usingUpdatedEjs" to usingUpdatedEjs,
+                "autoUpdateEnabled" to autoUpdate,
+                "lastUpdateCheckMs" to lastCheckMs
             )
+        }
+
+        val py = ensurePythonStarted(appContext)
+        val module = py.getModule("aura_yt_engine")
+        val qjsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
+        val updateDir = updateDirFile.absolutePath
+        val pyJson = JSONObject(module.callAttr("get_engine_info", qjsPath, updateDir).toString())
+
+        val pyVer = pyJson.optString("pythonVersion", "")
+        val ytVer = pyJson.optString("ytDlpVersion", "")
+        val ejsVer = pyJson.optString("ejsVersion", "")
+        cacheVersions(appContext, pyVer, ytVer, ejsVer)
+
+        mapOf(
+            "pythonStarted" to true,
+            "pythonVersion" to pyVer,
+            "ytDlpVersion" to ytVer,
+            "ejsVersion" to ejsVer,
+            "quickjsBinaryPath" to rustInfo.optString("quickjsBinaryPath", ""),
+            "quickjsReady" to rustInfo.optBoolean("quickjsBinaryExists", false),
+            "rustCrate" to rustInfo.optString("rustCrate", ""),
+            "audioProcessor" to rustInfo.optString("audioProcessor", ""),
+            "arch" to rustInfo.optString("arch", ""),
+            "usingUpdatedYtDlp" to pyJson.optBoolean("usingUpdatedYtDlp", usingUpdatedYtDlp),
+            "usingUpdatedEjs" to pyJson.optBoolean("usingUpdatedEjs", usingUpdatedEjs),
+            "autoUpdateEnabled" to autoUpdate,
+            "lastUpdateCheckMs" to lastCheckMs
+        )
+    }
+
+    suspend fun checkUpdates(context: Context): Map<String, Any?> = withContext(Dispatchers.IO) {
+        engineOpMutex.withLock {
+            val appContext = context.applicationContext
+            val updateDir = File(appContext.filesDir, YT_UPDATES_DIR).apply { if (!exists()) mkdirs() }
+            val qjsPath = AuraRustYtBridge.getQuickJsBinaryPath(appContext)
+            val py = ensurePythonStarted(appContext)
+            val module = py.getModule("aura_yt_engine")
+            val raw = module.callAttr("check_updates", updateDir.absolutePath, qjsPath).toString()
+            val obj = JSONObject(raw)
+
+            val checkedAtMs = obj.optLong("checkedAtMs", System.currentTimeMillis())
+            if (obj.optBoolean("ok", false)) {
+                prefs(appContext).edit().putLong(KEY_LAST_CHECK_MS, checkedAtMs).apply()
+            }
+
+            val ytObj = obj.optJSONObject("ytDlp") ?: JSONObject()
+            val ejsObj = obj.optJSONObject("ytDlpEjs") ?: JSONObject()
+            cacheVersions(
+                appContext,
+                null,
+                ytObj.optString("installed", ""),
+                ejsObj.optString("installed", "")
+            )
+
+            mapOf(
+                "ok" to obj.optBoolean("ok", false),
+                "checkedAtMs" to checkedAtMs,
+                "hasUpdates" to obj.optBoolean("hasUpdates", false),
+                "error" to obj.optString("error", ""),
+                "ytDlp" to mapOf(
+                    "installed" to ytObj.optString("installed", "unknown"),
+                    "latest" to ytObj.optString("latest", ""),
+                    "updateAvailable" to ytObj.optBoolean("updateAvailable", false)
+                ),
+                "ytDlpEjs" to mapOf(
+                    "installed" to ejsObj.optString("installed", "unknown"),
+                    "latest" to ejsObj.optString("latest", ""),
+                    "updateAvailable" to ejsObj.optBoolean("updateAvailable", false)
+                )
+            )
+        }
+    }
+
+    suspend fun updatePackages(
+        context: Context,
+        force: Boolean = false,
+        onProgress: (stage: String, packageName: String, percent: Double, downloadedBytes: Long, totalBytes: Long, message: String) -> Unit = { _, _, _, _, _, _ -> }
+    ): Map<String, Any?> = withContext(Dispatchers.IO) {
+        engineOpMutex.withLock {
+            runUpdateInternal(
+                context = context.applicationContext,
+                force = force,
+                onProgress = onProgress
+            )
+        }
+    }
+
+    private fun runUpdateInternal(
+        context: Context,
+        force: Boolean,
+        onProgress: (stage: String, packageName: String, percent: Double, downloadedBytes: Long, totalBytes: Long, message: String) -> Unit
+    ): Map<String, Any?> {
+        val updateDir = File(context.filesDir, YT_UPDATES_DIR).apply { if (!exists()) mkdirs() }
+        val cacheDir = File(context.cacheDir, YT_CACHE_DIR).apply { if (!exists()) mkdirs() }
+        val qjsPath = AuraRustYtBridge.getQuickJsBinaryPath(context)
+        val py = ensurePythonStarted(context)
+        val module = py.getModule("aura_yt_engine")
+
+        val callback = object : YtUpdateProgressCallback {
+            override fun onProgress(
+                stage: String,
+                packageName: String,
+                percent: Double,
+                downloadedBytes: Long,
+                totalBytes: Long,
+                message: String
+            ) {
+                onProgress(stage, packageName, percent, downloadedBytes, totalBytes, message)
+            }
+        }
+
+        val raw = module.callAttr(
+            "check_and_update_packages",
+            updateDir.absolutePath,
+            cacheDir.absolutePath,
+            qjsPath,
+            force,
+            callback
+        ).toString()
+
+        val obj = JSONObject(raw)
+        val checkedAtMs = obj.optLong("checkedAtMs", System.currentTimeMillis())
+        if (obj.optBoolean("ok", false)) {
+            prefs(context).edit().putLong(KEY_LAST_CHECK_MS, checkedAtMs).apply()
+        }
+
+        val ytObj = obj.optJSONObject("ytDlp") ?: JSONObject()
+        val ejsObj = obj.optJSONObject("ytDlpEjs") ?: JSONObject()
+        cacheVersions(
+            context,
+            null,
+            ytObj.optString("installed", ""),
+            ejsObj.optString("installed", "")
+        )
+
+        return mapOf(
+            "ok" to obj.optBoolean("ok", false),
+            "updatedAny" to obj.optBoolean("updatedAny", false),
+            "checkedAtMs" to checkedAtMs,
+            "message" to obj.optString("message", ""),
+            "error" to obj.optString("error", ""),
+            "ytDlp" to mapOf(
+                "installed" to ytObj.optString("installed", "unknown"),
+                "previous" to ytObj.optString("previous", ""),
+                "latest" to ytObj.optString("latest", ""),
+                "updated" to ytObj.optBoolean("updated", false),
+                "updateAvailable" to ytObj.optBoolean("updateAvailable", false)
+            ),
+            "ytDlpEjs" to mapOf(
+                "installed" to ejsObj.optString("installed", "unknown"),
+                "previous" to ejsObj.optString("previous", ""),
+                "latest" to ejsObj.optString("latest", ""),
+                "updated" to ejsObj.optBoolean("updated", false),
+                "updateAvailable" to ejsObj.optBoolean("updateAvailable", false)
+            )
+        )
+    }
+
+    suspend fun restoreBundledEngine(context: Context): Map<String, Any?> =
+        withContext(Dispatchers.IO) {
+            engineOpMutex.withLock {
+                val appContext = context.applicationContext
+                val updateDir = File(appContext.filesDir, YT_UPDATES_DIR)
+                if (Python.isStarted()) {
+                    val py = ensurePythonStarted(appContext)
+                    val module = py.getModule("aura_yt_engine")
+                    val raw = module.callAttr("clear_updates", updateDir.absolutePath).toString()
+                    val obj = JSONObject(raw)
+                    val ytVer = obj.optString("ytDlpVersion", "")
+                    val ejsVer = obj.optString("ejsVersion", "")
+                    cacheVersions(appContext, null, ytVer, ejsVer)
+                    return@withLock mapOf(
+                        "ok" to obj.optBoolean("ok", true),
+                        "removed" to obj.optBoolean("removed", false),
+                        "ytDlpVersion" to ytVer,
+                        "ejsVersion" to ejsVer
+                    )
+                }
+
+                var removed = false
+                if (updateDir.exists()) {
+                    removed = updateDir.deleteRecursively()
+                    updateDir.mkdirs()
+                }
+                prefs(appContext).edit()
+                    .remove(KEY_CACHED_YTDLP_VER)
+                    .remove(KEY_CACHED_EJS_VER)
+                    .apply()
+                mapOf(
+                    "ok" to true,
+                    "removed" to removed,
+                    "ytDlpVersion" to "",
+                    "ejsVersion" to ""
+                )
+            }
         }
 
     suspend fun downloadTrackFromUrl(
@@ -138,40 +381,59 @@ object AuraYtDownloader {
             if (!exists()) mkdirs()
         }
 
-        onProgress("python_init", 2.0, 0L, 0L, "Iniciando intérprete Python minimalista...")
-        val rawResult = try {
-            val py = ensurePythonStarted(appContext)
-            val module = py.getModule("aura_yt_engine")
-
-            val callback = object : YtProgressCallback {
-                override fun onProgress(
-                    stage: String,
-                    percent: Double,
-                    downloadedBytes: Long,
-                    totalBytes: Long,
-                    message: String
-                ) {
-                    onProgress(stage, percent, downloadedBytes, totalBytes, message)
+        val rawResult = engineOpMutex.withLock {
+            // Auto-actualizador silencioso cada 24h si está habilitado; nunca bloquea si no hay PyPI
+            if (isAutoUpdateEnabled(appContext)) {
+                val lastCheck = prefs(appContext).getLong(KEY_LAST_CHECK_MS, 0L)
+                if (System.currentTimeMillis() - lastCheck >= AUTO_UPDATE_INTERVAL_MS) {
+                    onProgress("resolving", 1.0, 0L, 0L, "Comprobando actualizaciones de yt-dlp...")
+                    runCatching {
+                        runUpdateInternal(
+                            context = appContext,
+                            force = false,
+                            onProgress = { _, _, _, _, _, msg ->
+                                onProgress("resolving", 1.5, 0L, 0L, msg)
+                            }
+                        )
+                    }
                 }
             }
 
-            module.callAttr(
-                "download_audio",
-                parsed.canonicalUrl,
-                downloadsDir.absolutePath,
-                cacheDir.absolutePath,
-                quickJsPath,
-                formatPref,
-                updateDir.absolutePath,
-                callback
-            ).toString()
-        } catch (err: Throwable) {
-            if (err is YtDownloadDetailedException) throw err
-            val summary = err.message ?: "Error al ejecutar yt-dlp en Chaquopy"
-            throw YtDownloadDetailedException(
-                summary = summary,
-                rawDetail = "Stage: python_exec\nURL: ${parsed.canonicalUrl}\n${err.stackTraceToString()}"
-            )
+            onProgress("python_init", 2.0, 0L, 0L, "Iniciando intérprete Python minimalista...")
+            try {
+                val py = ensurePythonStarted(appContext)
+                val module = py.getModule("aura_yt_engine")
+
+                val callback = object : YtProgressCallback {
+                    override fun onProgress(
+                        stage: String,
+                        percent: Double,
+                        downloadedBytes: Long,
+                        totalBytes: Long,
+                        message: String
+                    ) {
+                        onProgress(stage, percent, downloadedBytes, totalBytes, message)
+                    }
+                }
+
+                module.callAttr(
+                    "download_audio",
+                    parsed.canonicalUrl,
+                    downloadsDir.absolutePath,
+                    cacheDir.absolutePath,
+                    quickJsPath,
+                    formatPref,
+                    updateDir.absolutePath,
+                    callback
+                ).toString()
+            } catch (err: Throwable) {
+                if (err is YtDownloadDetailedException) throw err
+                val summary = err.message ?: "Error al ejecutar yt-dlp en Chaquopy"
+                throw YtDownloadDetailedException(
+                    summary = summary,
+                    rawDetail = "Stage: python_exec\nURL: ${parsed.canonicalUrl}\n${err.stackTraceToString()}"
+                )
+            }
         }
 
         val resultJson = JSONObject(rawResult)

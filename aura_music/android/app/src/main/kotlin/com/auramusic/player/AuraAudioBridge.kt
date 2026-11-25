@@ -36,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class AuraAudioBridge(
@@ -203,6 +204,63 @@ class AuraAudioBridge(
                 }
             }
 
+            "addToQueue" -> {
+                val trackMap = call.argument<Map<String, Any?>>("track")
+                val insertIndex = call.argument<Int>("insertIndex")
+                if (trackMap == null) {
+                    result.error("INVALID_ARG", "Pista inválida para encolar", null)
+                    return
+                }
+                ensureControllerConnected {
+                    val controller = mediaController
+                    if (controller == null) {
+                        result.error("NO_CONTROLLER", "ExoPlayer no disponible", null)
+                        return@ensureControllerConnected
+                    }
+                    val item = buildMediaItem(trackMap)
+                    if (controller.mediaItemCount == 0) {
+                        controller.setMediaItem(item)
+                        controller.prepare()
+                        controller.playWhenReady = true
+                    } else if (insertIndex != null) {
+                        val safeIndex = insertIndex.coerceIn(0, controller.mediaItemCount)
+                        controller.addMediaItem(safeIndex, item)
+                    } else {
+                        controller.addMediaItem(item)
+                    }
+                    emitPlaybackState(controller)
+                    result.success(true)
+                }
+            }
+
+            "moveQueueItem" -> {
+                val fromIndex = call.argument<Int>("fromIndex") ?: -1
+                val toIndex = call.argument<Int>("toIndex") ?: -1
+                val controller = mediaController
+                if (controller != null &&
+                    fromIndex in 0 until controller.mediaItemCount &&
+                    toIndex in 0 until controller.mediaItemCount &&
+                    fromIndex != toIndex
+                ) {
+                    controller.moveMediaItem(fromIndex, toIndex)
+                    emitPlaybackState(controller)
+                }
+                result.success(true)
+            }
+
+            "removeQueueItem" -> {
+                val index = call.argument<Int>("index") ?: -1
+                val controller = mediaController
+                if (controller != null && index in 0 until controller.mediaItemCount) {
+                    controller.removeMediaItem(index)
+                    if (controller.mediaItemCount == 0) {
+                        controller.stop()
+                    }
+                    emitPlaybackState(controller)
+                }
+                result.success(true)
+            }
+
             "play" -> {
                 ensureControllerConnected {
                     mediaController?.play()
@@ -322,6 +380,42 @@ class AuraAudioBridge(
                 }
             }
 
+            "deleteTrackResources" -> {
+                val trackId = call.argument<String>("trackId") ?: ""
+                val trackUri = call.argument<String>("trackUri") ?: ""
+                bridgeScope.launch {
+                    withContext(Dispatchers.IO) {
+                        val appContext = activity.applicationContext
+                        if (trackId.isNotBlank()) {
+                            runCatching {
+                                AuraArtworkProcessor.deleteCustomArtworksForTrack(
+                                    context = appContext,
+                                    trackId = trackId
+                                )
+                            }
+                            runCatching {
+                                val cachedThumb = File(File(appContext.cacheDir, "artworks"), "$trackId.jpg")
+                                if (cachedThumb.exists()) cachedThumb.delete()
+                            }
+                        }
+                        if (trackUri.isNotBlank()) {
+                            runCatching {
+                                val parsed = Uri.parse(trackUri)
+                                if (parsed.scheme == "file" && !parsed.path.isNullOrBlank()) {
+                                    val downloadsRoot = File(appContext.filesDir, "aura_downloads").canonicalFile
+                                    val targetFile = File(parsed.path!!).canonicalFile
+                                    // Solo borra archivos físicos descargados dentro del directorio privado aura_downloads
+                                    if (targetFile.path.startsWith(downloadsRoot.path + File.separator) && targetFile.exists()) {
+                                        targetFile.delete()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    result.success(true)
+                }
+            }
+
             "updateMediaItemMetadata" -> {
                 val trackMap = call.argument<Map<String, Any?>>("track")
                 val trackId = trackMap?.get("id") as? String
@@ -339,12 +433,78 @@ class AuraAudioBridge(
             }
 
             "getYtEngineStatus" -> {
+                val includePython = call.argument<Boolean>("includePython") ?: false
                 bridgeScope.launch {
                     runCatching {
-                        AuraYtDownloader.getEngineStatus(activity.applicationContext)
+                        AuraYtDownloader.getEngineStatus(
+                            context = activity.applicationContext,
+                            includePython = includePython
+                        )
                     }.fold(
                         onSuccess = { status -> result.success(status) },
                         onFailure = { err -> result.error("YT_STATUS_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "checkYtEngineUpdates" -> {
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.checkUpdates(activity.applicationContext)
+                    }.fold(
+                        onSuccess = { info -> result.success(info) },
+                        onFailure = { err -> result.error("YT_UPDATE_CHECK_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "updateYtEngine" -> {
+                val force = call.argument<Boolean>("force") ?: false
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.updatePackages(
+                            context = activity.applicationContext,
+                            force = force,
+                            onProgress = { stage, packageName, percent, downloadedBytes, totalBytes, message ->
+                                emitEvent(
+                                    mapOf(
+                                        "type" to "ytUpdateProgress",
+                                        "stage" to stage,
+                                        "packageName" to packageName,
+                                        "percent" to percent,
+                                        "downloadedBytes" to downloadedBytes,
+                                        "totalBytes" to totalBytes,
+                                        "message" to message
+                                    )
+                                )
+                            }
+                        )
+                    }.fold(
+                        onSuccess = { res -> result.success(res) },
+                        onFailure = { err -> result.error("YT_UPDATE_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "setYtAutoUpdateEnabled" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: true
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.setAutoUpdateEnabled(activity.applicationContext, enabled)
+                    }.fold(
+                        onSuccess = { value -> result.success(value) },
+                        onFailure = { err -> result.error("YT_PREF_ERR", err.message, null) }
+                    )
+                }
+            }
+
+            "restoreBundledYtEngine" -> {
+                bridgeScope.launch {
+                    runCatching {
+                        AuraYtDownloader.restoreBundledEngine(activity.applicationContext)
+                    }.fold(
+                        onSuccess = { res -> result.success(res) },
+                        onFailure = { err -> result.error("YT_RESTORE_ERR", err.message, null) }
                     )
                 }
             }
@@ -389,6 +549,37 @@ class AuraAudioBridge(
                             )
                         }
                     )
+                }
+            }
+
+            "getEqualizerState" -> {
+                bridgeScope.launch {
+                    val state = withContext(Dispatchers.IO) {
+                        AuraRustDspBridge.getStateMap(activity.applicationContext)
+                    }
+                    result.success(state)
+                }
+            }
+
+            "updateEqualizerState" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: false
+                val presetId = call.argument<String>("presetId") ?: "flat"
+                val preampDb = (call.argument<Number>("preampDb")?.toFloat()) ?: 0f
+                val limiterEnabled = call.argument<Boolean>("limiterEnabled") ?: true
+                val rawBands = call.argument<List<Number>>("bandGainsDb") ?: emptyList()
+                val bands = rawBands.map { it.toDouble() }
+                bridgeScope.launch {
+                    val state = withContext(Dispatchers.IO) {
+                        AuraRustDspBridge.updateSettings(
+                            context = activity.applicationContext,
+                            enabled = enabled,
+                            presetId = presetId,
+                            preampDb = preampDb,
+                            limiterEnabled = limiterEnabled,
+                            bandGainsDb = bands
+                        )
+                    }
+                    result.success(state)
                 }
             }
 

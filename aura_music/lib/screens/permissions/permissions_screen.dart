@@ -103,11 +103,12 @@ class _PermissionsScreenState extends State<PermissionsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final notifGranted = _notificationStatus.isGranted;
     final permanentlyDenied = _notificationStatus.isPermanentlyDenied;
 
     return Scaffold(
-      backgroundColor: AuraColors.background,
+      backgroundColor: c.background,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -129,39 +130,39 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                           width: 60,
                           height: 60,
                           decoration: BoxDecoration(
-                            color: AuraColors.accentSoft,
+                            color: c.accentSoft,
                             borderRadius: BorderRadius.circular(18),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.graphic_eq_rounded,
-                            color: AuraColors.accent,
+                            color: c.accent,
                             size: 32,
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
+                        Text(
                           'Permisos necesarios',
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.7,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           'Antes de entrar a Aura Music, confirma los permisos necesarios para reproducir en segundo plano y proteger tu privacidad.',
                           style: TextStyle(
                             fontSize: 14.5,
                             height: 1.45,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 24),
                         _PermissionCard(
                           icon: Icons.notifications_active_rounded,
-                          iconBg: AuraColors.accentSoft,
-                          iconColor: AuraColors.accent,
+                          iconBg: c.accentSoft,
+                          iconColor: c.accent,
                           title: 'Notificaciones y controles',
                           description:
                               'Permite mostrar el reproductor en la barra de notificaciones y en la pantalla bloqueada (Android 13+).',
@@ -173,45 +174,41 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                                       ? 'Bloqueado'
                                       : 'Requerido')),
                           badgeColor: notifGranted
-                              ? AuraColors.sage
-                              : (permanentlyDenied
-                                  ? const Color(0xFFB44437)
-                                  : AuraColors.amber),
+                              ? c.sage
+                              : (permanentlyDenied ? c.errorText : c.amber),
                           badgeBg: notifGranted
-                              ? AuraColors.sageSoft
-                              : (permanentlyDenied
-                                  ? const Color(0xFFF9E4E1)
-                                  : AuraColors.amberSoft),
+                              ? c.sageSoft
+                              : (permanentlyDenied ? c.errorBg : c.amberSoft),
                         ),
                         const SizedBox(height: 12),
-                        const _PermissionCard(
+                        _PermissionCard(
                           icon: Icons.folder_open_rounded,
-                          iconBg: AuraColors.sageSoft,
-                          iconColor: AuraColors.sage,
+                          iconBg: c.sageSoft,
+                          iconColor: c.sage,
                           title: 'Música y galería bajo demanda',
                           description:
                               'Usamos los selectores seguros de Android (SAF y Photo Picker). Nunca escaneamos todo tu teléfono sin tu permiso.',
                           badgeText: 'Privado',
-                          badgeColor: AuraColors.sage,
-                          badgeBg: AuraColors.sageSoft,
+                          badgeColor: c.sage,
+                          badgeBg: c.sageSoft,
                         ),
                         if (!notifGranted && _hasAttemptedRequest) ...[
                           const SizedBox(height: 16),
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: AuraColors.amberSoft,
+                              color: c.amberSoft,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AuraColors.border),
+                              border: Border.all(color: c.border),
                             ),
                             child: Text(
                               permanentlyDenied
                                   ? 'El permiso de notificaciones fue bloqueado en el sistema. Ábrelo en Ajustes para habilitar los controles en pantalla bloqueada.'
                                   : 'Sin este permiso, Android 13+ puede ocultar el reproductor en las notificaciones mientras la música suena en segundo plano.',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 height: 1.4,
-                                color: AuraColors.textPrimary,
+                                color: c.textPrimary,
                               ),
                             ),
                           ),
@@ -229,7 +226,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                                   ? openAppSettings
                                   : _handlePrimaryAction),
                           style: FilledButton.styleFrom(
-                            backgroundColor: AuraColors.accent,
+                            backgroundColor: c.accent,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 15),
                             shape: RoundedRectangleBorder(
@@ -271,7 +268,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                                 ? null
                                 : widget.onContinueWithoutNotifications,
                             style: TextButton.styleFrom(
-                              foregroundColor: AuraColors.textSecondary,
+                              foregroundColor: c.textSecondary,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                             child: const Text(
@@ -316,12 +313,13 @@ class _PermissionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AuraColors.surfaceElevated,
+        color: c.surfaceElevated,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AuraColors.border),
+        border: Border.all(color: c.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,10 +343,10 @@ class _PermissionCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.w700,
-                          color: AuraColors.textPrimary,
+                          color: c.textPrimary,
                         ),
                       ),
                     ),
@@ -376,10 +374,10 @@ class _PermissionCard extends StatelessWidget {
                 const SizedBox(height: 5),
                 Text(
                   description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     height: 1.4,
-                    color: AuraColors.textSecondary,
+                    color: c.textSecondary,
                   ),
                 ),
               ],

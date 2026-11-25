@@ -30,9 +30,10 @@ class ArtworkView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final hasFile =
         artworkPath != null && artworkPath!.isNotEmpty && File(artworkPath!).existsSync();
-    final tint = AuraTheme.warmTintForSeed(seed);
+    final tint = AuraTheme.warmTintForSeed(seed, isDark: c.isDark);
 
     return Container(
       width: size,
@@ -41,13 +42,13 @@ class ArtworkView extends StatelessWidget {
         borderRadius: BorderRadius.circular(borderRadius),
         color: tint,
         border: Border.all(
-          color: AuraColors.border.withValues(alpha: 0.7),
+          color: c.border.withValues(alpha: 0.7),
           width: 1,
         ),
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: AuraColors.textPrimary.withValues(alpha: 0.12),
+                  color: c.shadow,
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -88,6 +89,7 @@ class _FallbackDiscArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final iconSize = (size * 0.42).clamp(18.0, 72.0);
     return Stack(
       alignment: Alignment.center,
@@ -99,7 +101,7 @@ class _FallbackDiscArt extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [
                 tint,
-                Color.lerp(tint, AuraColors.accent, 0.22) ?? tint,
+                Color.lerp(tint, c.accent, 0.22) ?? tint,
               ],
             ),
           ),
@@ -111,7 +113,7 @@ class _FallbackDiscArt extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: AuraColors.textPrimary.withValues(alpha: 0.08),
+                color: c.textPrimary.withValues(alpha: 0.08),
                 width: 1.5,
               ),
             ),
@@ -119,7 +121,7 @@ class _FallbackDiscArt extends StatelessWidget {
         Icon(
           Icons.music_note_rounded,
           size: iconSize,
-          color: AuraColors.textPrimary.withValues(alpha: 0.65),
+          color: c.textPrimary.withValues(alpha: 0.65),
         ),
       ],
     );

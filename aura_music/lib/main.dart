@@ -2,9 +2,10 @@
 // main.dart — Punto de entrada de Aura Music
 // -----------------------------------------------------------------------------
 // Qué hace este archivo:
-//   Arranca Aura Music de inmediato en modo claro ("Acoustic Warmth") sin
-//   pantallas de carga bloqueantes. Registra los providers modulares y difiere
-//   la hidratación de SQLite + conexión con ExoPlayer hasta después del primer
+//   Arranca Aura Music sin pantallas de carga bloqueantes. Registra los
+//   providers modulares (LibraryProvider, PlayerProvider y SettingsProvider)
+//   con soporte dinámico para Modo Claro, Modo Oscuro o Sistema, y difiere la
+//   hidratación de SQLite + conexión con ExoPlayer hasta después del primer
 //   frame para lograr una experiencia instantánea al abrir la app.
 // =============================================================================
 
@@ -20,28 +21,22 @@ import 'screens/app_shell.dart';
 import 'screens/permissions/permissions_screen.dart';
 import 'state/library_provider.dart';
 import 'state/player_provider.dart';
+import 'state/settings_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: AuraColors.surface,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
 
   final engine = ExoPlayerBridge();
   final database = LibraryDatabase();
   final libraryProvider = LibraryProvider(engine: engine, database: database);
   final playerProvider = PlayerProvider(engine: engine, library: libraryProvider);
+  final settingsProvider = SettingsProvider(engine: engine);
 
   runApp(
     AuraMusicApp(
       libraryProvider: libraryProvider,
       playerProvider: playerProvider,
+      settingsProvider: settingsProvider,
     ),
   );
 }
@@ -51,10 +46,12 @@ class AuraMusicApp extends StatefulWidget {
     super.key,
     required this.libraryProvider,
     required this.playerProvider,
+    required this.settingsProvider,
   });
 
   final LibraryProvider libraryProvider;
   final PlayerProvider playerProvider;
+  final SettingsProvider settingsProvider;
 
   @override
   State<AuraMusicApp> createState() => _AuraMusicAppState();
@@ -64,11 +61,30 @@ class _AuraMusicAppState extends State<AuraMusicApp> {
   @override
   void initState() {
     super.initState();
-    // Diferir carga de SQLite y MediaController justo tras pintar el 1er frame
+    // Cargar tema guardado de inmediato y diferir SQLite + MediaController
+    widget.settingsProvider.hydrateThemeMode();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await widget.libraryProvider.hydrate();
       await widget.playerProvider.initializeEngineDeferred();
     });
+  }
+
+  void _syncSystemUi(BuildContext context, ThemeMode mode) {
+    final platformBrightness = MediaQuery.platformBrightnessOf(context);
+    final isDark = mode == ThemeMode.dark ||
+        (mode == ThemeMode.system && platformBrightness == Brightness.dark);
+
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor:
+            isDark ? AuraDarkColors.surface : AuraColors.surface,
+        systemNavigationBarIconBrightness:
+            isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
   }
 
   @override
@@ -81,12 +97,22 @@ class _AuraMusicAppState extends State<AuraMusicApp> {
         ChangeNotifierProvider<PlayerProvider>.value(
           value: widget.playerProvider,
         ),
+        ChangeNotifierProvider<SettingsProvider>.value(
+          value: widget.settingsProvider,
+        ),
       ],
-      child: MaterialApp(
-        title: 'Aura Music',
-        debugShowCheckedModeBanner: false,
-        theme: AuraTheme.buildLightTheme(),
-        home: const _PermissionsEntryGate(),
+      child: Consumer<SettingsProvider>(
+        builder: (context, settings, _) {
+          _syncSystemUi(context, settings.themeMode);
+          return MaterialApp(
+            title: 'Aura Music',
+            debugShowCheckedModeBanner: false,
+            theme: AuraTheme.buildLightTheme(),
+            darkTheme: AuraTheme.buildDarkTheme(),
+            themeMode: settings.themeMode,
+            home: const _PermissionsEntryGate(),
+          );
+        },
       ),
     );
   }
@@ -155,10 +181,11 @@ class _PermissionsEntryGateState extends State<_PermissionsEntryGate> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     if (_loading) {
-      return const Scaffold(
-        backgroundColor: AuraColors.background,
-        body: SizedBox.shrink(),
+      return Scaffold(
+        backgroundColor: c.background,
+        body: const SizedBox.shrink(),
       );
     }
 

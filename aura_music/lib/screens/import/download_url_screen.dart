@@ -19,6 +19,7 @@ import '../../core/theme/aura_theme.dart';
 import '../../state/library_provider.dart';
 import '../../state/player_provider.dart';
 import '../player/full_player_screen.dart';
+import '../settings/settings_screen.dart';
 
 class DownloadUrlScreen extends StatefulWidget {
   const DownloadUrlScreen({super.key});
@@ -122,6 +123,7 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final library = context.watch<LibraryProvider>();
     final isDownloading = library.isDownloadingUrl;
     final progress = library.downloadProgress;
@@ -129,7 +131,7 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
     final rawError = library.downloadRawError;
 
     return Scaffold(
-      backgroundColor: AuraColors.background,
+      backgroundColor: c.background,
       appBar: AppBar(
         title: const Text('Descargar desde URL'),
       ),
@@ -145,9 +147,9 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: AuraColors.surfaceElevated,
+                    color: c.surfaceElevated,
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: AuraColors.border),
+                    border: Border.all(color: c.border),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,16 +160,16 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: AuraColors.accentSoft,
+                              color: c.accentSoft,
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.link_rounded,
-                              color: AuraColors.accent,
+                              color: c.accent,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -176,14 +178,14 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,
-                                    color: AuraColors.textPrimary,
+                                    color: c.textPrimary,
                                   ),
                                 ),
                                 Text(
                                   'Sin instancias públicas ni escaneo global',
                                   style: TextStyle(
                                     fontSize: 12.5,
-                                    color: AuraColors.textSecondary,
+                                    color: c.textSecondary,
                                   ),
                                 ),
                               ],
@@ -197,10 +199,10 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                         enabled: !isDownloading,
                         keyboardType: TextInputType.url,
                         textInputAction: TextInputAction.done,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w600,
-                          color: AuraColors.textPrimary,
+                          color: c.textPrimary,
                         ),
                         validator: (value) {
                           final trimmed = (value ?? '').trim();
@@ -215,51 +217,54 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                         },
                         decoration: InputDecoration(
                           hintText: 'https://youtu.be/...',
-                          hintStyle: const TextStyle(color: AuraColors.textMuted),
-                          prefixIcon: const Icon(
+                          hintStyle: TextStyle(color: c.textMuted),
+                          prefixIcon: Icon(
                             Icons.play_circle_outline_rounded,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                           suffixIcon: IconButton(
                             onPressed: isDownloading ? null : _pasteFromClipboard,
-                            icon: const Icon(Icons.content_paste_rounded),
+                            icon: Icon(
+                              Icons.content_paste_rounded,
+                              color: c.textSecondary,
+                            ),
                             tooltip: 'Pegar enlace',
                           ),
                           filled: true,
-                          fillColor: AuraColors.surface,
+                          fillColor: c.surface,
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AuraColors.border),
+                            borderSide: BorderSide(color: c.border),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: AuraColors.accent,
+                            borderSide: BorderSide(
+                              color: c.accent,
                               width: 1.6,
                             ),
                           ),
                           errorBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFB44437),
+                            borderSide: BorderSide(
+                              color: c.errorText,
                             ),
                           ),
                           focusedErrorBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFB44437),
+                            borderSide: BorderSide(
+                              color: c.errorText,
                               width: 1.6,
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'Formato de audio preferido',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: AuraColors.textPrimary,
+                          color: c.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -301,21 +306,21 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: AuraColors.surfaceElevated,
+                      color: c.surfaceElevated,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AuraColors.border),
+                      border: Border.all(color: c.border),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            const SizedBox(
+                            SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.4,
-                                color: AuraColors.accent,
+                                color: c.accent,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -326,9 +331,9 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                                     : 'Procesando enlace...',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  color: AuraColors.textPrimary,
+                                  color: c.textPrimary,
                                 ),
                               ),
                             ),
@@ -342,20 +347,18 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                                 ? (progress.percent / 100.0).clamp(0.0, 1.0)
                                 : null,
                             minHeight: 7,
-                            backgroundColor: AuraColors.surface,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              AuraColors.accent,
-                            ),
+                            backgroundColor: c.surface,
+                            valueColor: AlwaysStoppedAnimation<Color>(c.accent),
                           ),
                         ),
                         if (progress.totalBytes > 0) ...[
                           const SizedBox(height: 8),
                           Text(
                             '${progress.percent.toStringAsFixed(1)}% · ${_formatBytes(progress.downloadedBytes)} / ${_formatBytes(progress.totalBytes)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: AuraColors.textSecondary,
+                              color: c.textSecondary,
                             ),
                           ),
                         ],
@@ -367,9 +370,9 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                     margin: const EdgeInsets.only(bottom: 14),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF9E4E1),
+                      color: c.errorBg,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE7B6B0)),
+                      border: Border.all(color: c.errorBorder),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -377,22 +380,22 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 1),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
                               child: Icon(
                                 Icons.error_outline_rounded,
                                 size: 20,
-                                color: Color(0xFF8D2B20),
+                                color: c.errorText,
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 errorMsg,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13.5,
                                   height: 1.4,
-                                  color: Color(0xFF8D2B20),
+                                  color: c.errorText,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -410,10 +413,8 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                                   () => _showRawError = !_showRawError,
                                 ),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF7A241A),
-                                  side: const BorderSide(
-                                    color: Color(0xFFD99A92),
-                                  ),
+                                  foregroundColor: c.errorText,
+                                  side: BorderSide(color: c.errorBorder),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
                                     vertical: 6,
@@ -442,10 +443,8 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                               OutlinedButton.icon(
                                 onPressed: () => _copyRawError(rawError),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF7A241A),
-                                  side: const BorderSide(
-                                    color: Color(0xFFD99A92),
-                                  ),
+                                  foregroundColor: c.errorText,
+                                  side: BorderSide(color: c.errorBorder),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
                                     vertical: 6,
@@ -472,18 +471,18 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                               constraints: const BoxConstraints(maxHeight: 240),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AuraColors.textPrimary,
+                                color: c.terminalBg,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Scrollbar(
                                 child: SingleChildScrollView(
                                   child: SelectableText(
                                     rawError,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontFamily: 'monospace',
                                       fontSize: 11.5,
                                       height: 1.4,
-                                      color: AuraColors.background,
+                                      color: c.terminalText,
                                     ),
                                   ),
                                 ),
@@ -498,7 +497,7 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                 FilledButton.icon(
                   onPressed: isDownloading ? null : _startDownload,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AuraColors.accent,
+                    backgroundColor: c.accent,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(
@@ -524,51 +523,88 @@ class _DownloadUrlScreenState extends State<DownloadUrlScreen> {
                 Container(
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
-                    color: AuraColors.surface,
+                    color: c.surface,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AuraColors.border),
+                    border: Border.all(color: c.border),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Arquitectura nativa activa',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: AuraColors.textPrimary,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Arquitectura nativa activa',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const SettingsScreen(),
+                                ),
+                              );
+                              if (mounted) {
+                                _loadEngineStatus();
+                              }
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: c.accent,
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                            ),
+                            icon: const Icon(Icons.system_update_alt_rounded,
+                                size: 15),
+                            label: const Text(
+                              'Actualizar',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       if (_loadingStatus)
-                        const Text(
+                        Text(
                           'Consultando runtime Python + Rust...',
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         )
                       else if (_engineStatus != null)
                         Text(
-                          _engineStatus!.pythonStarted
-                              ? 'yt-dlp ${_engineStatus!.ytDlpVersion} · ejs ${_engineStatus!.ejsVersion} · Python ${_engineStatus!.pythonVersion}\n'
+                          _engineStatus!.pythonStarted ||
+                                  _engineStatus!.ytDlpVersion.isNotEmpty
+                              ? 'yt-dlp ${_engineStatus!.ytDlpVersion} · ejs ${_engineStatus!.ejsVersion}'
+                                  '${_engineStatus!.pythonVersion.isNotEmpty ? " · Python ${_engineStatus!.pythonVersion}" : ""}\n'
                                   'JS Runtime: Rust QuickJS-ng (${_engineStatus!.quickjsReady ? "listo" : "pendiente"})\n'
-                                  'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch})'
+                                  'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch}) · Auto-actualizador ${_engineStatus!.autoUpdateEnabled ? "ON" : "OFF"}'
                               : 'Python 3.11 + yt-dlp + ejs (inicio diferido al descargar)\n'
                                   'JS Runtime: Rust QuickJS-ng (${_engineStatus!.quickjsReady ? "listo" : "pendiente"})\n'
-                                  'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch})',
-                          style: const TextStyle(
+                                  'Audio/Tags: ${_engineStatus!.audioProcessor} (${_engineStatus!.arch}) · Auto-actualizador ${_engineStatus!.autoUpdateEnabled ? "ON" : "OFF"}',
+                          style: TextStyle(
                             fontSize: 12,
                             height: 1.45,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         )
                       else
-                        const Text(
+                        Text(
                           'yt-dlp + yt-dlp-ejs + Rust QuickJS-ng + Rust Lofty (32/64 bits)',
                           style: TextStyle(
                             fontSize: 12,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                     ],
@@ -598,6 +634,7 @@ class _FormatOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Expanded(
       child: GestureDetector(
         onTap: enabled ? onTap : null,
@@ -605,10 +642,10 @@ class _FormatOption extends StatelessWidget {
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
           decoration: BoxDecoration(
-            color: selected ? AuraColors.textPrimary : AuraColors.surface,
+            color: selected ? c.chipSelectedBg : c.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? AuraColors.textPrimary : AuraColors.border,
+              color: selected ? c.chipSelectedBg : c.border,
             ),
           ),
           child: Text(
@@ -619,7 +656,7 @@ class _FormatOption extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : AuraColors.textPrimary,
+              color: selected ? c.chipSelectedFg : c.textPrimary,
             ),
           ),
         ),

@@ -35,6 +35,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final library = context.watch<LibraryProvider>();
     final player = context.watch<PlayerProvider>();
     final results = library.search(_query, filter: _filter);
@@ -44,15 +45,15 @@ class _SearchScreenState extends State<SearchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 18, 20, 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
             child: Text(
               'Buscar',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.7,
-                color: AuraColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
           ),
@@ -60,19 +61,20 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
               decoration: BoxDecoration(
-                color: AuraColors.surfaceElevated,
+                color: c.surfaceElevated,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AuraColors.border),
+                border: Border.all(color: c.border),
               ),
               child: TextField(
                 controller: _controller,
+                style: TextStyle(color: c.textPrimary),
                 onChanged: (value) => setState(() => _query = value),
                 decoration: InputDecoration(
                   hintText: 'Canción, artista, álbum o carpeta...',
-                  hintStyle: const TextStyle(color: AuraColors.textSecondary),
-                  prefixIcon: const Icon(
+                  hintStyle: TextStyle(color: c.textSecondary),
+                  prefixIcon: Icon(
                     Icons.search_rounded,
-                    color: AuraColors.textSecondary,
+                    color: c.textSecondary,
                   ),
                   suffixIcon: _query.isNotEmpty
                       ? IconButton(
@@ -80,7 +82,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             _controller.clear();
                             setState(() => _query = '');
                           },
-                          icon: const Icon(Icons.close_rounded),
+                          icon: Icon(Icons.close_rounded, color: c.textSecondary),
                         )
                       : null,
                   border: InputBorder.none,
@@ -127,7 +129,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           Icon(
                             Icons.manage_search_rounded,
                             size: 52,
-                            color: AuraColors.textSecondary.withValues(alpha: 0.6),
+                            color: c.textSecondary.withValues(alpha: 0.6),
                           ),
                           const SizedBox(height: 10),
                           Text(
@@ -135,9 +137,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                 ? 'Importa canciones primero para buscarlas aquí.'
                                 : 'Sin coincidencias para "$_query"',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
-                              color: AuraColors.textSecondary,
+                              color: c.textSecondary,
                             ),
                           ),
                         ],
@@ -180,16 +182,17 @@ class _FilterChipItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? AuraColors.accent : AuraColors.surface,
+          color: selected ? c.accent : c.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? AuraColors.accent : AuraColors.border,
+            color: selected ? c.accent : c.border,
           ),
         ),
         child: Text(
@@ -197,7 +200,7 @@ class _FilterChipItem extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : AuraColors.textPrimary,
+            color: selected ? Colors.white : c.textPrimary,
           ),
         ),
       ),

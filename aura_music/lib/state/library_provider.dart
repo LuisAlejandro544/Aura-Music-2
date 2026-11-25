@@ -385,9 +385,13 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   Future<void> removeTrack(String trackId) async {
+    final target = findById(trackId);
     _tracks.removeWhere((t) => t.id == trackId);
     notifyListeners();
-    await _engine.deleteCustomArtworks(trackId);
+    await _engine.deleteTrackResources(
+      trackId: trackId,
+      trackUri: target?.uri ?? '',
+    );
     await _database.deleteTrack(trackId);
     _playlists = await _database.getPlaylists();
     notifyListeners();

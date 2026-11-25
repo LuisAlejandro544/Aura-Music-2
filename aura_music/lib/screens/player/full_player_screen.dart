@@ -22,6 +22,7 @@ import '../../state/player_provider.dart';
 import '../../widgets/artwork_view.dart';
 import '../../widgets/sheets/queue_sheet.dart';
 import '../../widgets/sheets/track_options_sheet.dart';
+import '../equalizer/equalizer_screen.dart';
 
 class FullPlayerScreen extends StatefulWidget {
   const FullPlayerScreen({super.key});
@@ -36,18 +37,24 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final player = context.watch<PlayerProvider>();
     final library = context.read<LibraryProvider>();
     final track = player.currentTrack;
 
     if (track == null) {
-      return const Scaffold(
-        backgroundColor: AuraColors.background,
-        body: Center(child: Text('No hay ninguna canción activa')),
+      return Scaffold(
+        backgroundColor: c.background,
+        body: Center(
+          child: Text(
+            'No hay ninguna canción activa',
+            style: TextStyle(color: c.textPrimary),
+          ),
+        ),
       );
     }
 
-    final tint = AuraTheme.warmTintForSeed(track.album);
+    final tint = AuraTheme.warmTintForSeed(track.album, isDark: c.isDark);
     final totalMs = player.duration.inMilliseconds.clamp(1, 36000000);
     final currentMs = player.position.inMilliseconds.clamp(0, totalMs);
 
@@ -72,15 +79,16 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
         curve: Curves.easeOutCubic,
         transform: Matrix4.translationValues(0, _dragY, 0),
         child: Scaffold(
+          backgroundColor: c.background,
           body: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Color.lerp(AuraColors.background, tint, 0.55)!,
-                  AuraColors.background,
-                  AuraColors.surface.withValues(alpha: 0.65),
+                  Color.lerp(c.background, tint, 0.55)!,
+                  c.background,
+                  c.surface.withValues(alpha: 0.65),
                 ],
               ),
             ),
@@ -95,7 +103,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                       width: 44,
                       height: 4.5,
                       decoration: BoxDecoration(
-                        color: AuraColors.textPrimary.withValues(alpha: 0.16),
+                        color: c.textPrimary.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(99),
                       ),
                     ),
@@ -105,19 +113,23 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                       children: [
                         IconButton(
                           onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
+                          icon: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 30,
+                            color: c.textPrimary,
+                          ),
                           tooltip: 'Minimizar reproductor',
                         ),
                         Expanded(
                           child: Column(
                             children: [
-                              const Text(
+                              Text(
                                 'REPRODUCIENDO DESDE',
                                 style: TextStyle(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 1.1,
-                                  color: AuraColors.textSecondary,
+                                  color: c.textSecondary,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -125,10 +137,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                 track.folderName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
-                                  color: AuraColors.textPrimary,
+                                  color: c.textPrimary,
                                 ),
                               ),
                             ],
@@ -136,7 +148,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         ),
                         IconButton(
                           onPressed: () => showTrackOptionsSheet(context, track),
-                          icon: const Icon(Icons.more_horiz_rounded),
+                          icon: Icon(
+                            Icons.more_horiz_rounded,
+                            color: c.textPrimary,
+                          ),
                           tooltip: 'Opciones de pista',
                         ),
                       ],
@@ -208,11 +223,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                 track.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 23,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: -0.5,
-                                  color: AuraColors.textPrimary,
+                                  color: c.textPrimary,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -220,10 +235,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                 '${track.artist} · ${track.album}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w500,
-                                  color: AuraColors.textSecondary,
+                                  color: c.textSecondary,
                                 ),
                               ),
                             ],
@@ -236,17 +251,14 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                             library.toggleFavorite(track.id);
                           },
                           style: IconButton.styleFrom(
-                            backgroundColor: track.isFavorite
-                                ? AuraColors.accentSoft
-                                : AuraColors.surface,
+                            backgroundColor:
+                                track.isFavorite ? c.accentSoft : c.surface,
                           ),
                           icon: Icon(
                             track.isFavorite
                                 ? Icons.favorite_rounded
                                 : Icons.favorite_border_rounded,
-                            color: track.isFavorite
-                                ? AuraColors.accent
-                                : AuraColors.textPrimary,
+                            color: track.isFavorite ? c.accent : c.textPrimary,
                           ),
                           tooltip: 'Favorito',
                         ),
@@ -265,10 +277,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         overlayShape: const RoundSliderOverlayShape(
                           overlayRadius: 16,
                         ),
-                        activeTrackColor: AuraColors.accent,
-                        inactiveTrackColor: AuraColors.border,
-                        thumbColor: AuraColors.accent,
-                        overlayColor: AuraColors.accent.withValues(alpha: 0.16),
+                        activeTrackColor: c.accent,
+                        inactiveTrackColor: c.border,
+                        thumbColor: c.accent,
+                        overlayColor: c.accent.withValues(alpha: 0.16),
                       ),
                       child: Slider(
                         min: 0,
@@ -290,18 +302,18 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         children: [
                           Text(
                             formatDuration(Duration(milliseconds: currentMs)),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AuraColors.textSecondary,
+                              color: c.textSecondary,
                             ),
                           ),
                           Text(
                             formatDuration(Duration(milliseconds: totalMs)),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AuraColors.textSecondary,
+                              color: c.textSecondary,
                             ),
                           ),
                         ],
@@ -322,8 +334,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                           icon: Icon(
                             Icons.shuffle_rounded,
                             color: player.shuffleEnabled
-                                ? AuraColors.accent
-                                : AuraColors.textSecondary,
+                                ? c.accent
+                                : c.textSecondary,
                           ),
                           tooltip: 'Aleatorio',
                         ),
@@ -332,10 +344,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                             HapticFeedback.lightImpact();
                             player.skipPrevious();
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.skip_previous_rounded,
                             size: 38,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                           tooltip: 'Anterior',
                         ),
@@ -349,13 +361,13 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                             width: 72,
                             height: 72,
                             decoration: BoxDecoration(
-                              color: AuraColors.accent,
+                              color: c.accent,
                               borderRadius: BorderRadius.circular(
                                 player.isPlaying ? 24 : 36,
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AuraColors.accent.withValues(alpha: 0.34),
+                                  color: c.accent.withValues(alpha: 0.34),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),
@@ -375,10 +387,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                             HapticFeedback.lightImpact();
                             player.skipNext();
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.skip_next_rounded,
                             size: 38,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                           tooltip: 'Siguiente',
                         ),
@@ -392,8 +404,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                 ? Icons.repeat_one_rounded
                                 : Icons.repeat_rounded,
                             color: player.repeatMode != AuraRepeatMode.off
-                                ? AuraColors.accent
-                                : AuraColors.textSecondary,
+                                ? c.accent
+                                : c.textSecondary,
                           ),
                           tooltip: 'Repetir',
                         ),
@@ -414,11 +426,9 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                 vertical: 7,
                               ),
                               decoration: BoxDecoration(
-                                color: track.isLossless
-                                    ? AuraColors.sageSoft
-                                    : AuraColors.surface,
+                                color: track.isLossless ? c.sageSoft : c.surface,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AuraColors.border),
+                                border: Border.all(color: c.border),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -427,8 +437,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                     Icons.graphic_eq_rounded,
                                     size: 15,
                                     color: track.isLossless
-                                        ? AuraColors.sage
-                                        : AuraColors.textPrimary,
+                                        ? c.sage
+                                        : c.textPrimary,
                                   ),
                                   const SizedBox(width: 6),
                                   Flexible(
@@ -440,8 +450,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w700,
                                         color: track.isLossless
-                                            ? AuraColors.sage
-                                            : AuraColors.textPrimary,
+                                            ? c.sage
+                                            : c.textPrimary,
                                       ),
                                     ),
                                   ),
@@ -449,12 +459,32 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const EqualizerScreen(),
+                                ),
+                              );
+                            },
+                            style: IconButton.styleFrom(
+                              backgroundColor: player.equalizer.enabled
+                                  ? c.accentSoft
+                                  : c.surface,
+                              foregroundColor: player.equalizer.enabled
+                                  ? c.accent
+                                  : c.textPrimary,
+                            ),
+                            icon: const Icon(Icons.tune_rounded, size: 19),
+                            tooltip: 'Ecualizador Rust',
+                          ),
+                          const SizedBox(width: 6),
                           TextButton.icon(
                             onPressed: () => showQueueSheet(context),
                             style: TextButton.styleFrom(
-                              foregroundColor: AuraColors.textPrimary,
-                              backgroundColor: AuraColors.surface,
+                              foregroundColor: c.textPrimary,
+                              backgroundColor: c.surface,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 8,

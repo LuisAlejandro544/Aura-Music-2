@@ -166,10 +166,11 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final previewPath = _effectivePreviewArtwork;
 
     return Scaffold(
-      backgroundColor: AuraColors.background,
+      backgroundColor: c.background,
       appBar: AppBar(
         title: const Text('Editar metadatos'),
         actions: [
@@ -178,7 +179,7 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
             child: TextButton(
               onPressed: _isSaving || _isConvertingImage ? null : _saveChanges,
               style: TextButton.styleFrom(
-                foregroundColor: AuraColors.accent,
+                foregroundColor: c.accent,
                 textStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -202,9 +203,9 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: AuraColors.surfaceElevated,
+                    color: c.surfaceElevated,
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: AuraColors.border),
+                    border: Border.all(color: c.border),
                   ),
                   child: Column(
                     children: [
@@ -226,8 +227,7 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                                 width: 164,
                                 height: 164,
                                 decoration: BoxDecoration(
-                                  color: AuraColors.textPrimary
-                                      .withValues(alpha: 0.55),
+                                  color: c.scrim,
                                   borderRadius: BorderRadius.circular(24),
                                 ),
                                 child: const Column(
@@ -261,16 +261,16 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: AuraColors.sageSoft,
+                            color: c.sageSoft,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             '${_pendingWebp!.isLossless ? 'WebP sin pérdida' : 'WebP máxima calidad'} · ${_pendingWebp!.formattedSize} · ${_pendingWebp!.width}×${_pendingWebp!.height}',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AuraColors.sage,
+                              color: c.sage,
                             ),
                           ),
                         )
@@ -283,15 +283,15 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: AuraColors.sageSoft,
+                            color: c.sageSoft,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Carátula personalizada WebP activa',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AuraColors.sage,
+                              color: c.sage,
                             ),
                           ),
                         ),
@@ -301,9 +301,9 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                           child: Text(
                             _conversionError!,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
-                              color: Color(0xFFB44437),
+                              color: c.errorText,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -316,10 +316,9 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                                   ? null
                                   : _pickGalleryArtwork,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: AuraColors.textPrimary,
-                                backgroundColor: AuraColors.surface,
-                                side:
-                                    const BorderSide(color: AuraColors.border),
+                                foregroundColor: c.textPrimary,
+                                backgroundColor: c.surface,
+                                side: BorderSide(color: c.border),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
                                 shape: RoundedRectangleBorder(
@@ -343,8 +342,8 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                                   ? null
                                   : _restoreOriginal,
                               style: IconButton.styleFrom(
-                                backgroundColor: AuraColors.surface,
-                                foregroundColor: AuraColors.textPrimary,
+                                backgroundColor: c.surface,
+                                foregroundColor: c.textPrimary,
                               ),
                               icon: const Icon(Icons.restore_rounded),
                               tooltip: 'Restaurar carátula original',
@@ -353,12 +352,12 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Se convierte automáticamente a WebP a máxima compresión sin pérdida para ahorrar espacio sin bajar la calidad.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
-                          color: AuraColors.textSecondary,
+                          color: c.textSecondary,
                         ),
                       ),
                     ],
@@ -408,7 +407,7 @@ class _EditTrackMetadataScreenState extends State<EditTrackMetadataScreen> {
                   onPressed:
                       _isSaving || _isConvertingImage ? null : _saveChanges,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AuraColors.accent,
+                    backgroundColor: c.accent,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(
@@ -461,6 +460,7 @@ class _MetadataField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -468,10 +468,10 @@ class _MetadataField extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4, bottom: 6),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: AuraColors.textPrimary,
+              color: c.textPrimary,
             ),
           ),
         ),
@@ -479,36 +479,36 @@ class _MetadataField extends StatelessWidget {
           controller: controller,
           validator: validator,
           textInputAction: textInputAction,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: AuraColors.textPrimary,
+            color: c.textPrimary,
           ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: AuraColors.textMuted),
-            prefixIcon: Icon(icon, color: AuraColors.textSecondary, size: 20),
+            hintStyle: TextStyle(color: c.textMuted),
+            prefixIcon: Icon(icon, color: c.textSecondary, size: 20),
             filled: true,
-            fillColor: AuraColors.surfaceElevated,
+            fillColor: c.surfaceElevated,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 14,
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AuraColors.border),
+              borderSide: BorderSide(color: c.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AuraColors.accent, width: 1.6),
+              borderSide: BorderSide(color: c.accent, width: 1.6),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFFB44437)),
+              borderSide: BorderSide(color: c.errorText),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFFB44437), width: 1.6),
+              borderSide: BorderSide(color: c.errorText, width: 1.6),
             ),
           ),
         ),

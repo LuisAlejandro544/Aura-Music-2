@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/models/audio_track.dart';
 import '../../core/theme/aura_theme.dart';
+import '../../screens/equalizer/equalizer_screen.dart';
 import '../../screens/metadata/edit_track_metadata_screen.dart';
 import '../../state/library_provider.dart';
 import '../../state/player_provider.dart';
@@ -31,6 +32,7 @@ class _TrackOptionsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final library = context.watch<LibraryProvider>();
     final player = context.read<PlayerProvider>();
     final liveTrack = library.findById(track.id) ?? track;
@@ -45,7 +47,7 @@ class _TrackOptionsSheet extends StatelessWidget {
               width: 40,
               height: 4.5,
               decoration: BoxDecoration(
-                color: AuraColors.border,
+                color: c.border,
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
@@ -67,10 +69,10 @@ class _TrackOptionsSheet extends StatelessWidget {
                         liveTrack.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: AuraColors.textPrimary,
+                          color: c.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -78,9 +80,9 @@ class _TrackOptionsSheet extends StatelessWidget {
                         '${liveTrack.artist} · ${liveTrack.album}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: AuraColors.textSecondary,
+                          color: c.textSecondary,
                         ),
                       ),
                     ],
@@ -89,13 +91,13 @@ class _TrackOptionsSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            const Divider(color: AuraColors.border, height: 1),
+            Divider(color: c.border, height: 1),
             const SizedBox(height: 6),
             _SheetActionRow(
               icon: liveTrack.isFavorite
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded,
-              color: liveTrack.isFavorite ? AuraColors.accent : null,
+              color: liveTrack.isFavorite ? c.accent : null,
               label: liveTrack.isFavorite
                   ? 'Quitar de favoritos'
                   : 'Agregar a favoritos',
@@ -142,6 +144,19 @@ class _TrackOptionsSheet extends StatelessWidget {
               },
             ),
             _SheetActionRow(
+              icon: Icons.tune_rounded,
+              label: 'Ecualizador (Motor Rust DSP)',
+              onTap: () {
+                final navigator = Navigator.of(context);
+                navigator.pop();
+                navigator.push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const EqualizerScreen(),
+                  ),
+                );
+              },
+            ),
+            _SheetActionRow(
               icon: Icons.graphic_eq_rounded,
               label: 'Ficha técnica (${liveTrack.technicalSummary})',
               onTap: () {
@@ -151,7 +166,7 @@ class _TrackOptionsSheet extends StatelessWidget {
             ),
             _SheetActionRow(
               icon: Icons.delete_outline_rounded,
-              color: const Color(0xFFB44437),
+              color: c.errorText,
               label: 'Quitar de Aura Music',
               onTap: () {
                 library.removeTrack(liveTrack.id);
@@ -165,6 +180,7 @@ class _TrackOptionsSheet extends StatelessWidget {
   }
 
   void _showPlaylistPicker(BuildContext context, AudioTrack target) {
+    final c = AuraTheme.of(context);
     final library = context.read<LibraryProvider>();
     showModalBottomSheet<void>(
       context: context,
@@ -177,36 +193,42 @@ class _TrackOptionsSheet extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Añadir a playlist',
                   style: TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.w800,
-                    color: AuraColors.textPrimary,
+                    color: c.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
                 if (playlists.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
                       'Todavía no tienes playlists. Crea una en la pestaña Biblioteca.',
-                      style: TextStyle(color: AuraColors.textSecondary),
+                      style: TextStyle(color: c.textSecondary),
                     ),
                   )
                 else
                   ...playlists.map(
                     (pl) => ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.queue_music_rounded,
-                        color: AuraColors.accent,
+                        color: c.accent,
                       ),
                       title: Text(
                         pl.title,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: c.textPrimary,
+                        ),
                       ),
-                      subtitle: Text('${pl.tracks.length} canciones'),
+                      subtitle: Text(
+                        '${pl.tracks.length} canciones',
+                        style: TextStyle(color: c.textSecondary),
+                      ),
                       onTap: () async {
                         await library.addTrackToPlaylist(pl.id, target.id);
                         if (ctx.mounted) Navigator.pop(ctx);
@@ -222,14 +244,15 @@ class _TrackOptionsSheet extends StatelessWidget {
   }
 
   void _showTechnicalPopup(BuildContext context, AudioTrack target) {
+    final c = AuraTheme.of(context);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AuraColors.background,
+        backgroundColor: c.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text(
+        title: Text(
           'Detalles de audio local',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontWeight: FontWeight.w800, color: c.textPrimary),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -247,8 +270,8 @@ class _TrackOptionsSheet extends StatelessWidget {
                   : 'Estándar',
             ),
             _DetailRow('Carpeta', target.folderName),
-            _DetailRow('Motor activo', 'Media3 ExoPlayer (Android 9+)'),
-            _DetailRow('Módulo DSP', 'Arquitectura lista para Rust'),
+            const _DetailRow('Motor activo', 'Media3 ExoPlayer (Android 9+)'),
+            const _DetailRow('Módulo DSP', 'Rust aura_dsp (5 bandas + limitador)'),
           ],
         ),
         actions: [
@@ -277,17 +300,18 @@ class _SheetActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return ListTile(
       onTap: onTap,
       dense: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      leading: Icon(icon, color: color ?? AuraColors.textPrimary),
+      leading: Icon(icon, color: color ?? c.textPrimary),
       title: Text(
         label,
         style: TextStyle(
           fontSize: 14.5,
           fontWeight: FontWeight.w600,
-          color: color ?? AuraColors.textPrimary,
+          color: color ?? c.textPrimary,
         ),
       ),
     );
@@ -302,6 +326,7 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -311,8 +336,8 @@ class _DetailRow extends StatelessWidget {
             width: 96,
             child: Text(
               label,
-              style: const TextStyle(
-                color: AuraColors.textSecondary,
+              style: TextStyle(
+                color: c.textSecondary,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -321,8 +346,8 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: AuraColors.textPrimary,
+              style: TextStyle(
+                color: c.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),

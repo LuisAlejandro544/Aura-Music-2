@@ -35,14 +35,15 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final player = context.watch<PlayerProvider>();
     final track = player.currentTrack;
     if (track == null) return const SizedBox.shrink();
 
     final library = context.read<LibraryProvider>();
     final bgTint = Color.lerp(
-      AuraColors.surfaceElevated,
-      AuraTheme.warmTintForSeed(track.album),
+      c.surfaceElevated,
+      AuraTheme.warmTintForSeed(track.album, isDark: c.isDark),
       0.28,
     )!;
 
@@ -79,10 +80,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
         decoration: BoxDecoration(
           color: bgTint,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AuraColors.border, width: 1),
+          border: Border.all(color: c.border, width: 1),
           boxShadow: [
             BoxShadow(
-              color: AuraColors.textPrimary.withValues(alpha: 0.10),
+              color: c.shadow,
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
@@ -96,8 +97,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
             LinearProgressIndicator(
               value: player.progress,
               minHeight: 2.5,
-              backgroundColor: AuraColors.border.withValues(alpha: 0.5),
-              valueColor: const AlwaysStoppedAnimation<Color>(AuraColors.accent),
+              backgroundColor: c.border.withValues(alpha: 0.5),
+              valueColor: AlwaysStoppedAnimation<Color>(c.accent),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
@@ -122,10 +123,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           track.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w700,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 1),
@@ -133,9 +134,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           track.artist,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                       ],
@@ -150,16 +151,14 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       track.isFavorite
                           ? Icons.favorite_rounded
                           : Icons.favorite_border_rounded,
-                      color: track.isFavorite
-                          ? AuraColors.accent
-                          : AuraColors.textSecondary,
+                      color: track.isFavorite ? c.accent : c.textSecondary,
                       size: 22,
                     ),
                     tooltip: 'Favorito',
                   ),
                   Container(
                     decoration: BoxDecoration(
-                      color: AuraColors.accent,
+                      color: c.accent,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: IconButton(

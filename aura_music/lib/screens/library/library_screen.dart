@@ -51,6 +51,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final library = context.watch<LibraryProvider>();
     final player = context.watch<PlayerProvider>();
 
@@ -62,7 +63,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 14, 12),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Tu Biblioteca',
                     maxLines: 1,
@@ -71,13 +72,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.7,
-                      color: AuraColors.textPrimary,
+                      color: c.textPrimary,
                     ),
                   ),
                 ),
                 IconButton(
                   onPressed: () => _showCreatePlaylistDialog(context),
-                  icon: const Icon(Icons.playlist_add_rounded),
+                  icon: Icon(Icons.playlist_add_rounded, color: c.textPrimary),
                   tooltip: 'Nueva playlist',
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
@@ -87,7 +88,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   height: 40,
                   child: PopupMenuButton<LibrarySortBy>(
                     initialValue: library.sortBy,
-                    icon: const Icon(Icons.sort_rounded),
+                    color: c.surfaceElevated,
+                    icon: Icon(Icons.sort_rounded, color: c.textPrimary),
                     tooltip: 'Ordenar canciones',
                     padding: EdgeInsets.zero,
                     onSelected: library.setSortBy,
@@ -115,7 +117,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 FilledButton.icon(
                   onPressed: () => showImportSourceSheet(context),
                   style: FilledButton.styleFrom(
-                    backgroundColor: AuraColors.accent,
+                    backgroundColor: c.accent,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -192,27 +194,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showCreatePlaylistDialog(BuildContext context) {
+    final c = AuraTheme.of(context);
     final controller = TextEditingController();
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AuraColors.background,
+        backgroundColor: c.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text(
+        title: Text(
           'Nueva playlist local',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontWeight: FontWeight.w800, color: c.textPrimary),
         ),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
+          style: TextStyle(color: c.textPrimary),
+          decoration: InputDecoration(
             hintText: 'Ej: Camino al trabajo, Lossless...',
+            hintStyle: TextStyle(color: c.textSecondary),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: Text('Cancelar', style: TextStyle(color: c.textSecondary)),
           ),
           FilledButton(
             onPressed: () async {
@@ -221,7 +226,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
               await context.read<LibraryProvider>().createPlaylist(name);
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            style: FilledButton.styleFrom(backgroundColor: AuraColors.accent),
+            style: FilledButton.styleFrom(
+              backgroundColor: c.accent,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Crear'),
           ),
         ],
@@ -243,16 +251,17 @@ class _SegmentTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? AuraColors.textPrimary : AuraColors.surface,
+          color: selected ? c.chipSelectedBg : c.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? AuraColors.textPrimary : AuraColors.border,
+            color: selected ? c.chipSelectedBg : c.border,
           ),
         ),
         child: Text(
@@ -260,7 +269,7 @@ class _SegmentTab extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : AuraColors.textPrimary,
+            color: selected ? c.chipSelectedFg : c.textPrimary,
           ),
         ),
       ),
@@ -276,6 +285,7 @@ class _TracksTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     final tracks = library.tracks;
     if (tracks.isEmpty) {
       return Center(
@@ -284,24 +294,27 @@ class _TracksTab extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.music_off_rounded,
                 size: 48,
-                color: AuraColors.textSecondary,
+                color: c.textSecondary,
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Aún no has importado canciones.',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: AuraColors.textPrimary,
+                  color: c.textPrimary,
                 ),
               ),
               const SizedBox(height: 14),
               FilledButton.icon(
                 onPressed: () => showImportSourceSheet(context),
-                style: FilledButton.styleFrom(backgroundColor: AuraColors.accent),
+                style: FilledButton.styleFrom(
+                  backgroundColor: c.accent,
+                  foregroundColor: Colors.white,
+                ),
                 icon: const Icon(Icons.folder_open_rounded),
                 label: const Text('Importar ahora'),
               ),
@@ -341,6 +354,7 @@ class _CollectionsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AuraTheme.of(context);
     if (collections.isEmpty) {
       return Center(
         child: Padding(
@@ -348,7 +362,7 @@ class _CollectionsTab extends StatelessWidget {
           child: Text(
             emptyText,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AuraColors.textSecondary, fontSize: 15),
+            style: TextStyle(color: c.textSecondary, fontSize: 15),
           ),
         ),
       );
@@ -362,7 +376,7 @@ class _CollectionsTab extends StatelessWidget {
       itemBuilder: (context, index) {
         final col = collections[index];
         return Material(
-          color: AuraColors.surfaceElevated,
+          color: c.surfaceElevated,
           borderRadius: BorderRadius.circular(18),
           child: InkWell(
             onTap: () {
@@ -377,7 +391,7 @@ class _CollectionsTab extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AuraColors.border),
+                border: Border.all(color: c.border),
               ),
               child: Row(
                 children: [
@@ -396,10 +410,10 @@ class _CollectionsTab extends StatelessWidget {
                           col.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: AuraColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -407,17 +421,17 @@ class _CollectionsTab extends StatelessWidget {
                           '${col.subtitle} · ${formatCollectionSummary(col.tracks.length, col.totalDuration)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: AuraColors.textSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: AuraColors.textSecondary,
+                    color: c.textSecondary,
                   ),
                 ],
               ),
