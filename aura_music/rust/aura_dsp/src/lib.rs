@@ -295,7 +295,7 @@ pub fn set_dsp_parameters(
 
 #[no_mangle]
 pub extern "system" fn Java_com_auramusic_player_AuraRustDspBridge_nativeEngineInfo(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
 ) -> jstring {
     let payload = serde_json::json!({
@@ -437,13 +437,39 @@ mod tests {
     fn boosting_60hz_increases_low_frequency_energy() {
         let mut chain = DspChain::new(48000, 1);
         chain.refresh_coeffs(2, 0.0, &[9.0, 0.0, 0.0, 0.0, 0.0]);
-        let original = sine_wave(55.0, 48000, 4800);
-        let mut boosted = original.clone();
-        chain.process_interleaved_f32(&mut boosted, true);
 
-        let in_rms = rms(&original[1200..]);
-        let out_rms = rms(&boosted[1200..]);
-        assert!(out_rms > in_rms * 2.0, "60Hz boost failed: in={in_rms}, out={out_rms}");
+        // Un filtro Low-Shelf en 60 Hz entrega su ganancia completa (+9 dB ≈ 2.82x) por
+        // debajo de la frecuencia de corte (~2.49x a 30 Hz) y ~+5.1 dB (~1.81x) a 55 Hz.
+        let sub_bass = sine_wave(30.0, 48000, 4800);
+        let mut boosted_sub = sub_bass.clone();
+        chain.process_interleaved_f32(&mut boosted_sub, true);
+        let sub_in_rms = rms(&sub_bass[1200..]);
+        let sub_out_rms = rms(&boosted_sub[1200..]);
+        assert!(
+            sub_out_rms > sub_in_rms * 2.2,
+            "60Hz shelf passband boost failed at 30Hz: in={sub_in_rms}, out={sub_out_rms}"
+        );
+
+        chain.reset_states();
+        let corner = sine_wave(55.0, 48000, 4800);
+        let mut boosted_corner = corner.clone();
+        chain.process_interleaved_f32(&mut boosted_corner, true);
+        let corner_in_rms = rms(&corner[1200..]);
+        let corner_out_rms = rms(&boosted_corner[1200..]);
+        assert!(
+            corner_out_rms > corner_in_rms * 1.65,
+            "60Hz corner boost failed at 55Hz: in={corner_in_rms}, out={corner_out_rms}"
+        );
+
+        chain.reset_states();
+        let mids = sine_wave(2000.0, 48000, 4800);
+        let mut mids_out = mids.clone();
+        chain.process_interleaved_f32(&mut mids_out, true);
+        let mids_ratio = rms(&mids_out[1200..]) / rms(&mids[1200..]);
+        assert!(
+            (mids_ratio - 1.0).abs() < 0.05,
+            "60Hz shelf should not alter 2kHz mids: ratio={mids_ratio}"
+        );
     }
 
     #[test]
@@ -461,7 +487,10 @@ mod tests {
 
         for chunk in pcm_bytes.chunks_exact(2) {
             let val = i16::from_le_bytes([chunk[0], chunk[1]]);
-            assert!(val <= 32767 && val >= -32768);
+            assert!(
+                val.unsigned_abs() <= 32705,
+                "Soft limiter ceiling exceeded: {val}"
+            );
         }
     }
 
