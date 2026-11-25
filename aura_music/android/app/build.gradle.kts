@@ -108,10 +108,11 @@ chaquopy {
             ?.takeIf { it.isNotBlank() }
             ?.let { buildPython(it) }
         pip {
-            // Intérprete mínimo: solo yt-dlp + yt-dlp-ejs sin dependencias extra,
-            // más certifi para validación TLS fiable en Android 9+.
-            install("yt-dlp --no-deps")
-            install("yt-dlp-ejs --no-deps")
+            // Intérprete mínimo: solo yt-dlp + yt-dlp-ejs + certifi sin
+            // dependencias extra, pasando --no-deps mediante options().
+            options("--no-deps")
+            install("yt-dlp")
+            install("yt-dlp-ejs")
             install("certifi")
         }
         // Necesario para importlib.resources en yt_dlp_ejs y certifi/cacert.pem
